@@ -8,7 +8,7 @@ from app.config.database import get_db
 from app.models.user import UserModel
 from app.schemas.user import UserRegister, UserResponse, UserLogin, TokenResponse
 
-router = APIRouter(prefix="/api/users", tags=["Authentication"])
+router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
 # Konfigurasi hashing password menggunakan bcrypt
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -84,3 +84,15 @@ def login_user(user_data: UserLogin, db: Session = Depends(get_db)):
         "token_type": "bearer",
         "user": user
     }
+
+@router.post("/forgot-password")
+def forgot_password():
+    pass
+
+@router.post("/reset-password")
+def reset_password():
+    pass
+
+@router.post("/google")
+def google_login():
+    pass
