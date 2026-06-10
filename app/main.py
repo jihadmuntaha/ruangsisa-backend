@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.config.database import engine, Base, SessionLocal
 from app.models.post import CategoryModel
 from app.models import interaction
-from app.routes import auth, post, interaction
+from app.routes import auth, post, interaction, user
 
 # 1. Otomatis membuat tabel-tabel berdasarkan model yang terdaftar
 Base.metadata.create_all(bind=engine)
@@ -43,6 +43,7 @@ app = FastAPI(
 
 # 4. Daftarkan Routers
 app.include_router(auth.router)
+app.include_router(user.router)
 app.include_router(post.router)
 app.include_router(interaction.router)
 

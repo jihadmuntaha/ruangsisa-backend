@@ -32,3 +32,21 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str
     user: UserResponse  # Menyertakan info user dasar biar Flutter bisa langsung pakai data profil
+
+# Skema request untuk update profile
+class UserUpdateProfile(BaseModel):
+    name: str
+    bio: Optional[str] = None
+    location: Optional[str] = None
+
+# Skema response setelah sukses update
+class UserProfileResponse(BaseModel):
+    id: int
+    name: str
+    email: EmailStr
+    bio: Optional[str]
+    location: Optional[str]
+    eco_points: int
+
+    class Config:
+        from_attributes = True
