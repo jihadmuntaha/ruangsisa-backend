@@ -7,7 +7,7 @@ psycopg2-binary>=2.9.0
 SQLAlchemy>=2.0.0
 pyjwt>=2.8.0
 python-multipart>=0.0.9
-bcrypt>=4.0.0
+bcrypt==3.2.0
 passlib[bcrypt]>=1.7.4
 pg8000>=1.29.0
 python-dotenv>=0.19.0
