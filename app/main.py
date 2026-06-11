@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from sqlalchemy.orm import Session
 from app.config.database import engine, Base, SessionLocal
 from app.models.post import CategoryModel
-from app.models import interaction
+from app.models import interaction, user, auth
 from app.routes import auth, post, interaction, user
 
 # 1. Otomatis membuat tabel-tabel berdasarkan model yang terdaftar
