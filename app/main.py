@@ -1,14 +1,28 @@
 from fastapi import FastAPI
 from sqlalchemy.orm import Session
-from app.config.database import engine, Base, SessionLocal
-from app.models.post import CategoryModel
-from app.models import interaction, user, auth
-from app.routes import auth, post, interaction, user
+from app.config.database import engine, Base, SessionLocal, FORCE_LOCAL_SQLITE
+from fastapi.middleware.cors import CORSMiddleware 
 
-# 1. Otomatis membuat tabel-tabel berdasarkan model yang terdaftar
+
+# 1. Import Models dengan alias (m_) atau secara spesifik agar tidak bentrok dengan routes
+from app.models.post import CategoryModel
+from app.models.user import User
+from app.models.activity_log import ActivityLog
+from app.models import interaction as m_interaction
+from app.models import auth as m_auth
+
+# 2. Import Routers untuk didaftarkan ke FastAPI
+from app.routes import auth as r_auth, user as r_user, post as r_post, interaction as r_interaction
+from app.routes import post as r_post
+from app.routes import interaction as r_interaction
+from app.routes import user as r_user
+from app.routes import chat as r_chat
+
+
+# 3. Otomatis membuat tabel-tabel berdasarkan model yang terdaftar di database lokal (SQLite)
 Base.metadata.create_all(bind=engine)
 
-# 2. Fungsi Otomatis untuk Seed Data Kategori jika tabel masih kosong
+# 4. Fungsi Otomatis untuk Seed Data Kategori jika tabel masih kosong
 def seed_initial_categories():
     db: Session = SessionLocal()
     try:
@@ -34,19 +48,30 @@ def seed_initial_categories():
 # Jalankan seeder tepat setelah tabel dipastikan ada
 seed_initial_categories()
 
-# 3. Inisialisasi FastAPI
+
+# 5. Inisialisasi FastAPI
 app = FastAPI(
     title="RuangSisa RESTful API",
     description="Web Service Pendukung Aplikasi C2C Eco-Social Media RuangSisa",
     version="1.0.0"
 )
 
-# 4. Daftarkan Routers
-app.include_router(auth.router)
-app.include_router(user.router)
-app.include_router(post.router)
-app.include_router(interaction.router)
+# konfigurasi CORS agar bisa diakses dari domain manapun (Flutter app kita)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Bisa diubah ke domain spesifik jika sudah deploy
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-@app.get("/")
+# 6. Daftarkan Routers menggunakan alias router yang baru
+app.include_router(r_auth.router)
+app.include_router(r_user.router)
+app.include_router(r_post.router)
+app.include_router(r_interaction.router)
+app.include_router(r_chat.router)
+
+@app.get("/", tags=["Default"])
 def root():
     return {"status": "success", "message": "Welcome to RuangSisa API Services"}

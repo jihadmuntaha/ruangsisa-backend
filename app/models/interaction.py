@@ -12,8 +12,9 @@ class CommentModel(Base):
     comment_text = Column(Text, nullable=False)
     created_at = Column(TIMESTAMP, server_default=func.now())
 
-    # Relasi
-    user = relationship("UserModel")
+    # 🔗 Relasi Balik (Diperjelas arahnya)
+    user = relationship("User", back_populates="comments")
+    post = relationship("PostModel", back_populates="comments") # ◄ TAMBAHKAN INI (Sesuaikan dengan nama class Post kamu, misal PostModel atau Post)
 
 
 class ChatRoomModel(Base):
@@ -25,7 +26,7 @@ class ChatRoomModel(Base):
     last_message = Column(Text, nullable=True)
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
-    # Relasi ke isi pesan
+    # 🔗 Relasi ke isi pesan
     messages = relationship("MessageModel", back_populates="room", cascade="all, delete-orphan")
 
 
@@ -39,5 +40,6 @@ class MessageModel(Base):
     is_read = Column(Boolean, default=False)
     created_at = Column(TIMESTAMP, server_default=func.now())
 
-    # Relasi balik ke room
+    # 🔗 Relasi balik ke room
     room = relationship("ChatRoomModel", back_populates="messages")
+    sender = relationship("User") # ◄ TAMBAHKAN INI agar nanti Flutter bisa langsung tahu siapa nama pengirim pesannya

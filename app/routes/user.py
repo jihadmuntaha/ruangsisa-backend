@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.config.database import get_db
-from app.models.user import UserModel # Sesuaikan dengan path model lu
+from app.models.user import User as UserModel # Sesuaikan dengan path model lu
 from app.schemas.user import UserUpdateProfile, UserProfileResponse
 from app.middleware.auth_bearer import get_current_user # Sesuaikan fungsi guard JWT lu
 

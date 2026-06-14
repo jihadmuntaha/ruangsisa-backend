@@ -4,7 +4,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from app.config.database import get_db
-from app.models.user import UserModel
+from app.models.user import User as UserModel
 
 # Menggunakan utilitas bawaan FastAPI untuk membaca skema 'Bearer Token' di Header
 security = HTTPBearer()
