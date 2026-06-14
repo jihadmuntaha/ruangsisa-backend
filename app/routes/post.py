@@ -43,18 +43,17 @@ def create_post(
     post_data: PostCreate, 
     db: Session = Depends(get_db),
     # 🔴 BYPASS SEMENTARA: Kita komentari/matikan baris satpam JWT ini
-    # current_user: UserModel = Depends(get_current_user) 
+    current_user: UserModel = Depends(get_current_user) 
 ):
     # 🟢 BUAT MOCK USER: Hardcode objek user dummy sesuai ID lu di database (Misal ID: 4)
     # Ini biar sistem tetap mengira ada user valid yang sedang memposting barang
-    from app.models.user import User as UserModel
-    mock_user = db.query(UserModel).filter(UserModel.id == 1).first() # ◄ Sesuaikan angka 4 dengan ID user lu di SQLite
+    # mock_user = db.query(UserModel).filter(UserModel.id == 1).first() # ◄ Sesuaikan angka 4 dengan ID user lu di SQLite
     
-    if not mock_user:
-        raise HTTPException(status_code=404, detail="User testing ID 4 belum dibuat di DB, Beh!")
+    # if not mock_user:
+    #     raise HTTPException(status_code=404, detail="User testing ID 4 belum dibuat di DB, Beh!")
 
     new_post = PostModel(
-        user_id=mock_user.id, # ◄ Membaca otomatis dari mock user
+        user_id=current_user, # ◄ Membaca otomatis dari mock user
         category_id=post_data.category_id,
         title=post_data.title,
         description=post_data.description,
