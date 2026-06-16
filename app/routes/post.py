@@ -1,69 +1,196 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Form, File, UploadFile
+from sqlalchemy.orm import Session, joinedload
+from typing import Optional, List
 from app.config.database import get_db
 from app.models.post import PostModel, CategoryModel
-from app.schemas.post import PostCreate, PostResponse # Pastikan di schemas sudah ada CategoryResponse jika dipakai
-from app.middleware.auth_bearer import get_current_user
-from app.models.user import User as UserModel
+from app.models.user import User
+import os
+from datetime import datetime
 
-router = APIRouter(prefix="/api", tags=["Feeds & Posts"])
+router = APIRouter(prefix="/api", tags=["Posts"])
 
-# 1. Ambil Semua Kategori untuk Filter Beranda Flutter
-# Catatan: Jika schemas kamu memakai nama lain, sesuaikan response_model-nya
-@router.get("/categories")
-def get_categories(db: Session = Depends(get_db)):
-    return db.query(CategoryModel).all()
-
-
-# 2. Ambil Semua Postingan Barang (Feed Beranda)
-# Sudah support filter optional berdasarkan kategori / pencarian kata kunci otomatis
-@router.get("/posts", response_model=List[PostResponse])
+# ✅ GET ALL POSTS - dengan joinedload yang benar
+@router.get("/posts")
 def get_all_posts(
-    category_id: Optional[int] = None, 
-    search: Optional[str] = None, 
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=100),
+    category_id: Optional[int] = Query(None),
     db: Session = Depends(get_db)
 ):
-    query = db.query(PostModel)
+    """
+    Mendapatkan semua postingan dengan filter opsional
+    """
+    print("📡 [GET /api/posts] Request received")
     
-    # Filter Kategori jika diklik di Top Bar Flutter
+    # ✅ Gunakan joinedload untuk eager loading author
+    query = db.query(PostModel).options(joinedload(PostModel.author))
+    
     if category_id:
         query = query.filter(PostModel.category_id == category_id)
     
-    # 🛠️ PERBAIKAN: Menggunakan ilike agar pencarian teks di Search Bar tidak case-sensitive
-    if search:
-        query = query.filter(PostModel.title.ilike(f"%{search}%"))
+    posts = query.order_by(PostModel.created_at.desc()).offset(skip).limit(limit).all()
+    
+    result = []
+    for post in posts:
+        # ✅ Data author dari relationship
+        author_name = "User RuangSisa"
+        author_avatar = None
         
-    return query.order_by(PostModel.created_at.desc()).all()
+        if post.author:
+            author_name = post.author.name
+            author_avatar = post.author.avatar
+        
+        result.append({
+            "id": post.id,
+            "user_id": post.user_id,
+            "category_id": post.category_id,
+            "title": post.title,
+            "description": post.description,
+            "images": post.images,
+            "post_type": post.post_type,
+            "price": post.price,
+            "barter_wishlist": post.barter_wishlist,
+            "status": post.status,
+            "created_at": post.created_at.isoformat() if post.created_at else None,
+            "author": {
+                "id": post.user_id,
+                "name": author_name,
+                "avatar": author_avatar
+            }
+        })
+    
+    print(f"✅ Returning {len(result)} posts")
+    return result
 
 
-# 3. Membuat Postingan Kontribusi Baru (Fase Menu 3)
-@router.post("/posts", response_model=PostResponse, status_code=status.HTTP_201_CREATED)
-def create_post(
-    post_data: PostCreate, 
-    db: Session = Depends(get_db),
-    # 🔴 BYPASS SEMENTARA: Kita komentari/matikan baris satpam JWT ini
-    current_user: UserModel = Depends(get_current_user) 
+# ✅ GET SINGLE POST
+@router.get("/posts/{post_id}")
+def get_post_by_id(
+    post_id: int,
+    db: Session = Depends(get_db)
 ):
-    # 🟢 BUAT MOCK USER: Hardcode objek user dummy sesuai ID lu di database (Misal ID: 4)
-    # Ini biar sistem tetap mengira ada user valid yang sedang memposting barang
-    # mock_user = db.query(UserModel).filter(UserModel.id == 1).first() # ◄ Sesuaikan angka 4 dengan ID user lu di SQLite
+    post = db.query(PostModel).options(joinedload(PostModel.author)).filter(PostModel.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
     
-    # if not mock_user:
-    #     raise HTTPException(status_code=404, detail="User testing ID 4 belum dibuat di DB, Beh!")
+    return {
+        "id": post.id,
+        "user_id": post.user_id,
+        "category_id": post.category_id,
+        "title": post.title,
+        "description": post.description,
+        "images": post.images,
+        "post_type": post.post_type,
+        "price": post.price,
+        "barter_wishlist": post.barter_wishlist,
+        "status": post.status,
+        "created_at": post.created_at.isoformat() if post.created_at else None,
+        "author": {
+            "id": post.user_id,
+            "name": post.author.name if post.author else "User RuangSisa",
+            "avatar": post.author.avatar if post.author else None
+        }
+    }
 
-    new_post = PostModel(
-        user_id=current_user, # ◄ Membaca otomatis dari mock user
-        category_id=post_data.category_id,
-        title=post_data.title,
-        description=post_data.description,
-        images=post_data.images,
-        post_type=post_data.post_type,
-        price=post_data.price,
-        barter_wishlist=post_data.barter_wishlist
-    )
-    
-    db.add(new_post)
-    db.commit()
-    db.refresh(new_post)
-    return new_post
+
+# ✅ GET CATEGORIES
+@router.get("/categories")
+def get_all_categories(db: Session = Depends(get_db)):
+    categories = db.query(CategoryModel).all()
+    return [
+        {
+            "id": cat.id,
+            "category_name": cat.category_name,
+            "icon_name": cat.icon_name
+        }
+        for cat in categories
+    ]
+
+
+# ✅ CREATE POST
+@router.post("/posts", status_code=status.HTTP_201_CREATED)
+async def create_post(
+    title: str = Form(...),
+    description: str = Form(...),
+    user_id: int = Form(...),
+    post_type: str = Form(...),
+    category_id: int = Form(...),
+    price: Optional[int] = Form(None),
+    barter_wishlist: Optional[str] = Form(None),
+    image: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    try:
+        print("=" * 50)
+        print(f"📝 Creating post:")
+        print(f"   - title: {title}")
+        print(f"   - user_id: {user_id}")
+        print(f"   - post_type: {post_type}")
+        print(f"   - category_id: {category_id}")
+        print("=" * 50)
+        
+        # Validasi user
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail=f"User {user_id} not found")
+        
+        # Validasi category
+        category = db.query(CategoryModel).filter(CategoryModel.id == category_id).first()
+        if not category:
+            raise HTTPException(status_code=404, detail=f"Category {category_id} not found")
+        
+        # Save image
+        UPLOAD_DIR = "uploads"
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_filename = f"{timestamp}_{image.filename.replace(' ', '_')}"
+        file_path = os.path.join(UPLOAD_DIR, safe_filename)
+        
+        content = await image.read()
+        with open(file_path, "wb") as buffer:
+            buffer.write(content)
+        
+        # Create post
+        new_post = PostModel(
+            user_id=user_id,
+            category_id=category_id,
+            title=title,
+            description=description,
+            images=f"/uploads/{safe_filename}",
+            post_type=post_type,
+            price=price if post_type == "Dijual" else None,
+            barter_wishlist=barter_wishlist if post_type == "Barter" else None,
+        )
+        
+        db.add(new_post)
+        db.commit()
+        db.refresh(new_post)
+        
+        print(f"✅ Post created! ID: {new_post.id}")
+        
+        return {
+            "id": new_post.id,
+            "user_id": new_post.user_id,
+            "category_id": new_post.category_id,
+            "title": new_post.title,
+            "description": new_post.description,
+            "images": new_post.images,
+            "post_type": new_post.post_type,
+            "price": new_post.price,
+            "barter_wishlist": new_post.barter_wishlist,
+            "status": new_post.status,
+            "created_at": new_post.created_at.isoformat() if new_post.created_at else None,
+            "author": {
+                "id": user.id,
+                "name": user.name,
+                "avatar": user.avatar
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))

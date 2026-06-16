@@ -1,48 +1,114 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Form
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from app.config.database import get_db
-from app.models.interaction import CommentModel
 from app.models.post import PostModel
-from app.schemas.interaction import CommentCreate, CommentResponse
-from app.middleware.auth_bearer import get_current_user
-from app.models.user import User as UserModel
+from app.models.user import User
+from app.models.interaction import CommentModel
+from datetime import datetime
 
-router = APIRouter(prefix="/api/interaction", tags=["Comments & Interaction"])
+router = APIRouter(prefix="/api", tags=["Interactions"])
 
-# 💬 1. Kirim Komentar / Penawaran Bidding Terbuka baru
-@router.post("/posts/comments", response_model=CommentResponse, status_code=status.HTTP_201_CREATED)
-def create_comment(
-    comment_data: CommentCreate,
-    db: Session = Depends(get_db),
-    current_user: UserModel = Depends(get_current_user) # 🔐 Harus Login dulu
+# ✅ GET COMMENTS BY POST ID
+@router.get("/posts/{post_id}/comments")
+def get_comments_by_post(
+    post_id: int,
+    db: Session = Depends(get_db)
 ):
-    # Cek dulu, barangnya beneran ada kagak di DB?
-    post_exists = db.query(PostModel).filter(PostModel.id == comment_data.post_id).first()
-    if not post_exists:
-        raise HTTPException(status_code=404, detail="Postingan barang tidak ditemukan!")
+    """
+    Mendapatkan semua komentar untuk sebuah postingan
+    """
+    print(f"💬 [GET COMMENTS] Post ID: {post_id}")
+    
+    # Cek apakah post ada
+    post = db.query(PostModel).filter(PostModel.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Postingan tidak ditemukan")
+    
+    # Ambil komentar
+    comments = db.query(CommentModel).filter(CommentModel.post_id == post_id).order_by(CommentModel.created_at.desc()).all()
+    
+    result = []
+    for comment in comments:
+        user = db.query(User).filter(User.id == comment.user_id).first()
+        result.append({
+            "id": comment.id,
+            "post_id": comment.post_id,
+            "user_id": comment.user_id,
+            "content": comment.content,
+            "created_at": comment.created_at.isoformat() if comment.created_at else None,
+            "user": {
+                "id": user.id if user else None,
+                "name": user.name if user else "User Dihapus",
+                "avatar": user.avatar if user else None
+            }
+        })
+    
+    print(f"✅ Returning {len(result)} comments")
+    return result
 
-    # Rakit komentar baru
-    new_comment = CommentModel(
-        post_id=comment_data.post_id,
-        user_id=current_user.id, # Otomatis dari token JWT
-        comment_text=comment_data.comment_text
-    )
-
-    db.add(new_comment)
-    db.commit()
-    db.refresh(new_comment)
-    return new_comment
-
-
-# 📜 2. Ambil semua list komentar berdasarkan ID Postingan (Buka Lembar Komentar di Flutter)
-@router.get("/posts/{post_id}/comments", response_model=List[CommentResponse])
-def get_comments_by_post(post_id: int, db: Session = Depends(get_db)):
-    # Cek apakah postingannya ada
-    post_exists = db.query(PostModel).filter(PostModel.id == post_id).first()
-    if not post_exists:
-        raise HTTPException(status_code=404, detail="Postingan barang tidak ditemukan!")
-
-    # Ambil semua komentar, urutkan dari yang paling lama (asc) agar logis dibaca dari atas ke bawah
-    comments = db.query(CommentModel).filter(CommentModel.post_id == post_id).order_by(CommentModel.created_at.asc()).all()
-    return comments
+# ✅ POST COMMENT - PERBAIKI
+@router.post("/posts/comments", status_code=status.HTTP_201_CREATED)
+def create_comment(
+    post_id: int = Form(...),   # ← Perhatikan nama field
+    user_id: int = Form(...),   # ← Perhatikan nama field
+    content: str = Form(...),   # ← Perhatikan nama field
+    db: Session = Depends(get_db),
+):
+    """
+    Membuat komentar baru pada postingan
+    """
+    try:
+        print("=" * 50)
+        print(f"💬 [CREATE COMMENT]")
+        print(f"   - post_id: {post_id}")
+        print(f"   - user_id: {user_id}")
+        print(f"   - content: {content}")
+        print("=" * 50)
+        
+        # Validasi post
+        post = db.query(PostModel).filter(PostModel.id == post_id).first()
+        if not post:
+            raise HTTPException(status_code=404, detail="Postingan tidak ditemukan")
+        
+        # Validasi user
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User tidak ditemukan")
+        
+        # Validasi content
+        if not content or len(content.strip()) == 0:
+            raise HTTPException(status_code=422, detail="Komentar tidak boleh kosong")
+        
+        # Create comment
+        new_comment = CommentModel(
+            post_id=post_id,
+            user_id=user_id,
+            content=content.strip()
+        )
+        
+        db.add(new_comment)
+        db.commit()
+        db.refresh(new_comment)
+        
+        print(f"✅ Comment created! ID: {new_comment.id}")
+        
+        return {
+            "id": new_comment.id,
+            "post_id": new_comment.post_id,
+            "user_id": new_comment.user_id,
+            "content": new_comment.content,
+            "created_at": new_comment.created_at.isoformat() if new_comment.created_at else None,
+            "user": {
+                "id": user.id,
+                "name": user.name,
+                "avatar": user.avatar
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
