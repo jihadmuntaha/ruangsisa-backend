@@ -1,15 +1,23 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, BackgroundTasks  # ◄ FIXED: Tambah BackgroundTasks
 from sqlalchemy.orm import Session
-from app.config.database import get_db
-from app.models.user import User
-from app.schemas.user import UserRegister, UserResponse
-from app.utils import get_password_hash, log_activity
-from app.models.user import User
-from app.schemas.user import UserRegister, UserResponse, UserLogin, TokenResponse
-from app.utils import get_password_hash, verify_password, create_access_token, log_activity
+from datetime import datetime
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 import os
+
+from app.config.database import get_db
+from app.models.user import User
+from app.models.otp import OTPVerification  
+from app.schemas.user import UserRegister, UserResponse, UserLogin, TokenResponse
+from app.schemas.otp import OTPVerify, OTPResend  
+from app.utils import (
+    get_password_hash, 
+    verify_password, 
+    create_access_token, 
+    log_activity,
+    generate_otp,       
+    send_otp_email      
+)
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 
@@ -18,8 +26,16 @@ router = APIRouter(
     tags=["Authentication"]
 )
 
+# =========================================================================
+# 📝 1. ENDPOINT REGISTER (Suntikan BackgroundTasks - Anti-Delay)
+# =========================================================================
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def register_user(payload: UserRegister, request: Request, db: Session = Depends(get_db)):
+def register_user(
+    payload: UserRegister, 
+    request: Request, 
+    background_tasks: BackgroundTasks,  # ◄ FIXED: Injeksi mesin background
+    db: Session = Depends(get_db)
+):
     existing_user = db.query(User).filter(User.email == payload.email).first()
     if existing_user:
         raise HTTPException(
@@ -33,61 +49,63 @@ def register_user(payload: UserRegister, request: Request, db: Session = Depends
         name=payload.name,
         email=payload.email,
         password=hashed_password,
-        eco_points=0
+        eco_points=0,
+        is_verified=False  
     )
     
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
     
+    # GENERATE OTP
+    otp_code = generate_otp()
+    db_otp = OTPVerification(email=new_user.email, otp_code=otp_code, purpose="register")
+    db.add(db_otp)
+    db.commit()
+    
+    # 🟢 FIXED: Lempar fungsi kirim email ke Background Task (Respons langsung 201 ke Flutter!)
+    background_tasks.add_task(send_otp_email, new_user.email, otp_code, "register")
+    
     log_activity(
-        db=db,
-        request=request,
-        user_id=new_user.id,
-        activity="Register Akun",
-        description=f"User {new_user.name} berhasil mendaftar menggunakan email lokal."
+        db=db, request=request, user_id=new_user.id, activity="Register Akun",
+        description=f"User {new_user.name} mendaftar lokal. Pengiriman paket email didelegasikan ke background thread."
     )
     
     return new_user
 
 
+# =========================================================================
+# 🔐 2. ENDPOINT LOGIN LOKAL (Proteksi Gembok Verifikasi OTP)
+# =========================================================================
 @router.post("/login", response_model=TokenResponse)
 def login_user(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
-    # 1. Cari user berdasarkan email
     user = db.query(User).filter(User.email == payload.email).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Email atau password salah!"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email atau password salah!")
     
-    # 2. Cek apakah user mendaftar lewat Google (tidak punya password lokal)
     if not user.password:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Akun ini terdaftar via Google. Silakan login menggunakan Google!"
         )
     
-    # 3. Verifikasi password pencocokan hash
     if not verify_password(payload.password, user.password):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email atau password salah!")
+    
+    # 🛡️ PROTEKSI SAKLEK: Cegah login jika akun belum melakukan aktivasi kode OTP
+    if not user.is_verified:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Email atau password salah!"
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Akun lu belum aktif, Beh! Silakan verifikasi kode OTP di email lu duluan."
         )
     
-    # 4. Generate token JWT RuangSisa jika sukses
     access_token = create_access_token(data={"sub": str(user.id)})
     
-    # 5. Catat riwayat ke Activity Log
     log_activity(
-        db=db,
-        request=request,
-        user_id=user.id,
-        activity="Login Lokal",
-        description=f"User {user.name} berhasil login ke dalam aplikasi."
+        db=db, request=request, user_id=user.id, activity="Login Lokal",
+        description=f"User {user.name} berhasil masuk aplikasi."
     )
     
-    # 6. Kembalikan token beserta info data user sesuai TokenResponse schema
     return {
         "access_token": access_token,
         "token_type": "bearer",
@@ -95,105 +113,140 @@ def login_user(payload: UserLogin, request: Request, db: Session = Depends(get_d
     }
 
 
-# Endpoint untuk Google Sign-In (Tukar Google ID Token dengan JWT RuangSisa)
-
+# =========================================================================
+# 🌐 3. ENDPOINT GOOGLE AUTH (Auto-Bypass OTP Karena Terverifikasi Google)
+# =========================================================================
 @router.post("/google", response_model=TokenResponse)
 def google_auth(payload: dict, request: Request, db: Session = Depends(get_db)):
-    """Endpoint untuk menerima Google ID Token dari Flutter dan menukarnya dengan JWT RuangSisa"""
-    
-    # 1. Ambil token dari payload kiriman Flutter
     token_dari_flutter = payload.get("id_token")
     if not token_dari_flutter:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Google ID Token tidak ditemukan!"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Google ID Token tidak ditemukan!")
         
     try:
-        # 2. Verifikasi token langsung ke Server Google (Tanpa clock_skew yang bikin crash)
-        # Kita biarkan library memverifikasi struktur dasar tokennya dulu
-        id_info = id_token.verify_oauth2_token(
-            token_dari_flutter, 
-            google_requests.Request()
-        )
-        
-        # 🔍 VALIDASI AUDIENCE MANUAL (Multi-Platform & Anti-401)
-        # Cara ini jauh lebih aman karena menerima token baik dari sisi Web App maupun Android
+        id_info = id_token.verify_oauth2_token(token_dari_flutter, google_requests.Request())
         token_audience = id_info.get("aud")
         
-        # Jika token tidak cocok dengan Web Client ID kamu, kita validasi di sini
         if token_audience != GOOGLE_CLIENT_ID:
-            # Opsional: Jika kamu ingin mengecek kecocokan dengan Android Client ID juga, buka baris di bawah:
-            # if token_audience not in [GOOGLE_CLIENT_ID, "TARUH_CLIENT_ID_ANDROID_MU_JIKA_ADA"]:
-            raise ValueError("Audience token tidak cocok dengan GOOGLE_CLIENT_ID backend!")
+            raise ValueError("Audience token tidak cocok!")
             
-        # 3. Ekstrak data user yang dikembalikan oleh Google
         email = id_info.get("email")
         name = id_info.get("name")
         avatar = id_info.get("picture")
-        google_id = id_info.get("sub") # ID unik user dari Google
+        google_id = id_info.get("sub")
         
     except ValueError as e:
-        # 🛠️ TRICK SAKLEK: Cetak isi id_info mentah dari Google biar kelihatan ID aslinya
-        # Kita pakai library jwt bawaan atau cetak error tokennya
         print(f" 🔥 [GOOGLE AUTH ERROR]: {str(e)}")
-        
-        # Tambahkan baris ini biar kita bisa tahu isi 'aud' yang dikirim HP Realme
-        import json
-        import base64
-        try:
-            # Membongkar isi token tanpa verifikasi cuma buat ngintip Client ID yang dikirim HP
-            payload_b64 = token_dari_flutter.split('.')[1]
-            payload_json = base64.b64decode(payload_b64 + '===').decode('utf-8')
-            payload_data = json.loads(payload_json)
-            print(f" 🔍 [CLIENT ID YANG DIKIRIM HP REALME]: {payload_data.get('aud')}")
-        except:
-            pass
-
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Google ID Token tidak valid atau sudah kadaluarsa! Detail: {str(e)}"
         )
         
-    # 4. Cek apakah user dengan email ini sudah ada di database RuangSisa
     user = db.query(User).filter(User.email == email).first()
     
     if not user:
-        # Jika belum ada, otomatis daftarkan sebagai user baru via Google Login
+        # GOOGLE BYPASS: Otomatis aktifkan status karena Google sudah menjamin keaslian email
         user = User(
-            name=name,
-            email=email,
-            avatar=avatar,
-            google_id=google_id,
-            eco_points=0 # Poin awal sirkulasi ekonomi hijau
+            name=name, email=email, avatar=avatar, google_id=google_id,
+            eco_points=0, is_verified=True, verified_at=datetime.utcnow()
         )
         db.add(user)
         db.commit()
         db.refresh(user)
         
         log_activity(
-            db=db, request=request, user_id=user.id,
-            activity="Register Google",
-            description=f"User {user.name} otomatis terdaftar lewat Google Sign-In."
+            db=db, request=request, user_id=user.id, activity="Register Google",
+            description=f"User {user.name} otomatis terdaftar & langsung aktif via Google."
         )
     else:
-        # Jika user sudah ada, update google_id-nya jika sebelumnya dia daftar lewat jalur lokal
         if not user.google_id:
             user.google_id = google_id
+            user.is_verified = True  
             db.commit()
             db.refresh(user)
             
         log_activity(
-            db=db, request=request, user_id=user.id,
-            activity="Login Google",
-            description=f"User {user.name} berhasil masuk menggunakan akun Google."
+            db=db, request=request, user_id=user.id, activity="Login Google",
+            description=f"User {user.name} masuk menggunakan Google."
         )
         
-    # 5. Cetak JWT Token internal RuangSisa untuk hak akses Flutter
     access_token = create_access_token(data={"sub": str(user.id)})
     
     return {
         "access_token": access_token,
         "token_type": "bearer",
-        "user": user  # ◄ Ganti dictionary manual kemarin dengan objek 'user' langsung
+        "user": user
     }
+
+
+# =========================================================================
+# 📡 4. ENDPOINT VERIFIKASI OTP REALTIME FROM FLUTTER
+# =========================================================================
+@router.post("/verify-otp")
+def verify_otp(payload: OTPVerify, request: Request, db: Session = Depends(get_db)):
+    print(f"📡 [BACKEND] Mencoba verifikasi OTP untuk email: {payload.email}")
+    
+    db_otp = db.query(OTPVerification).filter(
+        OTPVerification.email == payload.email,
+        OTPVerification.otp_code == payload.otp_code,
+        OTPVerification.purpose == payload.purpose,
+        OTPVerification.is_used == False,
+        OTPVerification.expired_at > datetime.utcnow()
+    ).order_by(OTPVerification.id.desc()).first()
+
+    if not db_otp:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Kode OTP keliru, sudah kedaluwarsa, atau sudah terpakai, Beh!"
+        )
+
+    db_otp.is_used = True
+    
+    user = db.query(User).filter(User.email == payload.email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Data user kontributor tidak ditemukan!")
+    
+    user.is_verified = True
+    user.verified_at = datetime.utcnow()
+    db.commit()
+
+    log_activity(
+        db=db, request=request, user_id=user.id, activity="Verifikasi OTP Sukses",
+        description=f"User {user.name} sukses mengaktifkan akun via verifikasi OTP ({payload.purpose})."
+    )
+    
+    return {"status": "success", "message": "Selamat, verifikasi berhasil dilakukan!"}
+
+
+# =========================================================================
+# 🔥 5. ENDPOINT KIRIM ULANG OTP (BackgroundTasks - Anti-Freezing)
+# =========================================================================
+@router.post("/resend-otp")
+def resend_otp(
+    payload: OTPResend, 
+    request: Request, 
+    background_tasks: BackgroundTasks,  # ◄ FIXED: Injeksi background tasks untuk resend
+    db: Session = Depends(get_db)
+):
+    user = db.query(User).filter(User.email == payload.email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Email jahanam ini belum terdaftar di RuangSisa!")
+
+    db.query(OTPVerification).filter(
+        OTPVerification.email == payload.email,
+        OTPVerification.purpose == payload.purpose
+    ).update({"is_used": True})
+
+    new_otp = generate_otp()
+    db_otp = OTPVerification(email=payload.email, otp_code=new_otp, purpose=payload.purpose)
+    db.add(db_otp)
+    db.commit()
+
+    # 🟢 FIXED: Delegasikan tugas pengiriman email kirim ulang ke background thread
+    background_tasks.add_task(send_otp_email, payload.email, new_otp, payload.purpose)
+
+    log_activity(
+        db=db, request=request, user_id=user.id, activity="Resend OTP",
+        description=f"User {user.name} meminta kirim ulang OTP untuk keperluan {payload.purpose}."
+    )
+
+    return {"status": "success", "message": "Kode OTP baru sedang dikirim ke email lu!"}

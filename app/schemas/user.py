@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 from datetime import datetime
 
@@ -10,7 +10,7 @@ from datetime import datetime
 class UserRegister(BaseModel):
     name: str
     email: EmailStr
-    password: str
+    password: str = Field(..., min_length=8)
 
 # Schema untuk mengembalikan data ke Flutter (Response)
 class UserResponse(BaseModel):
