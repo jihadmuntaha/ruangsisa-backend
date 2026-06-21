@@ -20,10 +20,17 @@ class User(Base):
     is_verified = Column(Boolean, default=False)  # Status verifikasi email
     verified_at = Column(DateTime, nullable=True)  # Waktu verifikasi
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    # 👤🔒 KOLOM SAKTI FACE EMBEDDING (Dikumpulin bareng kolom fisik atas biar rapi)
+    face_embedding = Column(Text, nullable=True) 
+    
+    # 🕒 TIMESTAMP
+    created_at = Column(DateTime, default=datetime.utcnow) # ◄ HANYA ADA SATU DI SINI
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # 🔗 Relasi tambahan untuk Chat & Message
+    # =========================================================================
+    # 🔗 RELATIONSHIPS (Ditaruh paling bawah setelah kolom fisik beres)
+    # =========================================================================
+    # Relasi tambahan untuk Chat & Message
     chat_rooms_v1 = relationship("ChatRoomModel", foreign_keys="[ChatRoomModel.user_one_id]")
     chat_rooms_v2 = relationship("ChatRoomModel", foreign_keys="[ChatRoomModel.user_two_id]")
 

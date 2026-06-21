@@ -1,25 +1,27 @@
+import json
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.config.database import get_db
-from app.models.user import User as UserModel # Sesuaikan dengan path model lu
+from app.models.user import User as UserModel 
+from app.models.activity_log import ActivityLog # ◄ KUNCI: Import model log lu buat ditarik datanya
 from app.schemas.user import UserUpdateProfile, UserProfileResponse
-from app.middleware.auth_bearer import get_current_user # Sesuaikan fungsi guard JWT lu
+from app.middleware.auth_bearer import get_current_user 
 
-router = APIRouter(prefix="/api/users", tags=["Users"])
+# 🟢 SINKRONISASI PREFIX: Diubah jadi "/user" agar pas dengan tembakan http di Flutter lu, Beh!
+router = APIRouter(prefix="/user", tags=["Users"])
 
+# 1. ENDPOINT UPDATE PROFIL (YANG SUDAH LU PUNYA)
 @router.put("/profile", response_model=UserProfileResponse)
 def update_profile(
     profile_data: UserUpdateProfile, 
     db: Session = Depends(get_db),
-    current_user: UserModel = Depends(get_current_user) # Kunci pengaman token JWT
+    current_user: UserModel = Depends(get_current_user) 
 ):
     try:
-        # Update field data di objek model user yang sedang login
         current_user.name = profile_data.name
         current_user.bio = profile_data.bio
         current_user.location = profile_data.location
         
-        # Commit perubahan ke database Supabase
         db.commit()
         db.refresh(current_user)
         
@@ -31,3 +33,31 @@ def update_profile(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Gagal memperbarui profil: {str(e)}"
         )
+
+@router.get("/logs")
+def get_user_activity_logs(
+    db: Session = Depends(get_db),
+    current_user: UserModel = Depends(get_current_user) # ◄ 🔐 GEMBOK DIKUNCI LAGI!
+):
+    try:
+        # HARD SECURITY FILTRATION:
+        # Cuma tarik data log yang user_id-nya murni milik user yang sedang login saat ini
+        logs = db.query(ActivityLog).filter(ActivityLog.user_id == current_user.id).order_by(ActivityLog.created_at.desc()).all()
+        
+        formatted_logs = []
+        for log in logs:
+            try:
+                details_obj = json.loads(log.description) if log.description else {}
+            except Exception:
+                details_obj = {"info": log.description}
+                
+            formatted_logs.append({
+                "id": log.id,
+                "user_id": log.user_id,
+                "action": log.activity, 
+                "details": details_obj,
+                "created_at": log.created_at.isoformat() if log.created_at else ""
+            })
+        return formatted_logs
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal memuat log aman: {str(e)}")

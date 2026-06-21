@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from sqlalchemy.orm import Session
 from app.config.database import engine, Base, SessionLocal, FORCE_LOCAL_SQLITE
 from fastapi.middleware.cors import CORSMiddleware 
-
+from app.middleware.activity_log import ActivityLogMiddleware
 
 # 1. Import Models dengan alias (m_) atau secara spesifik agar tidak bentrok dengan routes
 from app.models.post import CategoryModel
@@ -11,13 +11,8 @@ from app.models.activity_log import ActivityLog
 from app.models import interaction as m_interaction
 from app.models import auth as m_auth
 
-# 2. Import Routers untuk didaftarkan ke FastAPI
-from app.routes import auth as r_auth, user as r_user, post as r_post, interaction as r_interaction
-from app.routes import post as r_post
-from app.routes import interaction as r_interaction
-from app.routes import user as r_user
-from app.routes import chat as r_chat
-
+# 2. Import Routers untuk didaftarkan ke FastAPI (Sudah disapu bersih dari duplikasi)
+from app.routes import auth as r_auth, user as r_user, post as r_post, interaction as r_interaction, chat as r_chat
 
 # 3. Otomatis membuat tabel-tabel berdasarkan model yang terdaftar di database lokal (SQLite)
 Base.metadata.create_all(bind=engine)
@@ -48,7 +43,6 @@ def seed_initial_categories():
 # Jalankan seeder tepat setelah tabel dipastikan ada
 seed_initial_categories()
 
-
 # 5. Inisialisasi FastAPI
 app = FastAPI(
     title="RuangSisa RESTful API",
@@ -56,7 +50,8 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# konfigurasi CORS agar bisa diakses dari domain manapun (Flutter app kita)
+# 🔴 KUNCI PERBAIKAN: Pisahkan konfigurasi CORS dan ActivityLog secara mandiri!
+# Konfigurasi CORS agar bisa diakses dari domain manapun (Flutter app kita)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Bisa diubah ke domain spesifik jika sudah deploy
@@ -65,12 +60,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 🟢 DAFTARKAN MIDDLEWARE LOG AKTIVITAS SECARA MANDIRI DI SINI, BEH!
+app.add_middleware(ActivityLogMiddleware)
+
+
 # 6. Daftarkan Routers menggunakan alias router yang baru
 app.include_router(r_auth.router)
 app.include_router(r_user.router)
 app.include_router(r_post.router)
 app.include_router(r_interaction.router)
 app.include_router(r_chat.router)
+
 
 @app.get("/", tags=["Default"])
 def root():

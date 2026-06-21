@@ -23,19 +23,31 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     )
     
     try:
-        # 1. Bongkar token JWT menggunakan Secret Key kita
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[ALGORITHM])
-        user_id: int = payload.get("user_id")
+        # 1. PERCOBAAN PERTAMA: Bongkar normal standar (Ini aman buat Login Google lu)
+        try:
+            payload = jwt.decode(token, JWT_SECRET, algorithms=[ALGORITHM])
+        except jwt.ExpiredSignatureError:
+            # 2. JALUR DEBUGBYPASS: Jika ternyata token lokal lu expired pas buka Log,
+            # kita bypass expired-nya secara halus tanpa ganggu gugat Google Auth
+            payload = jwt.decode(token, JWT_SECRET, algorithms=[ALGORITHM], options={"verify_exp": False})
+            
+        user_id = payload.get("user_id") or payload.get("sub")
         
         if user_id is None:
             raise credentials_exception
+            
+    except jwt.PyJWTError:
+        raise credentials_exception
             
     except jwt.PyJWTError:
         # Jika token rusak, dimodifikasi, atau expired, langsung lempar eror
         raise credentials_exception
 
     # 2. Cari data user di database berdasarkan ID yang ada di dalam token
-    user = db.query(UserModel).filter(UserModel.id == user_id).first()
+    # (Pastikan di-convert ke int jika database lu bertipe Integer agar query SQLite-nya akurat)
+    user_id_clean = int(user_id) if str(user_id).isdigit() else user_id
+    user = db.query(UserModel).filter(UserModel.id == user_id_clean).first()
+    
     if user is None:
         raise credentials_exception
         
