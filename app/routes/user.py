@@ -34,19 +34,23 @@ def update_profile(
             detail=f"Gagal memperbarui profil: {str(e)}"
         )
 
+# Pastikan bentuknya seperti ini di dalam app/routes/user.py:
+# app/routes/user.py
+
 @router.get("/logs")
 def get_user_activity_logs(
     db: Session = Depends(get_db),
-    current_user: UserModel = Depends(get_current_user) # ◄ 🔐 GEMBOK DIKUNCI LAGI!
+    # 🟢 KUNCI: Ubah dari 'User' menjadi 'UserModel' (sesuai alias import di file lu)
+    current_user: UserModel = Depends(get_current_user) 
 ):
     try:
-        # HARD SECURITY FILTRATION:
-        # Cuma tarik data log yang user_id-nya murni milik user yang sedang login saat ini
+        # Ambil log yang murni milik user yang sedang login saat ini
         logs = db.query(ActivityLog).filter(ActivityLog.user_id == current_user.id).order_by(ActivityLog.created_at.desc()).all()
         
         formatted_logs = []
         for log in logs:
             try:
+                # Kolom asli DB lu adalah description, bukan details!
                 details_obj = json.loads(log.description) if log.description else {}
             except Exception:
                 details_obj = {"info": log.description}
@@ -54,10 +58,11 @@ def get_user_activity_logs(
             formatted_logs.append({
                 "id": log.id,
                 "user_id": log.user_id,
-                "action": log.activity, 
+                "action": log.activity, # ◄ Kolom asli DB lu adalah activity, bukan action!
                 "details": details_obj,
                 "created_at": log.created_at.isoformat() if log.created_at else ""
             })
+            
         return formatted_logs
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Gagal memuat log aman: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Gagal memuat log aktivitas: {str(e)}")

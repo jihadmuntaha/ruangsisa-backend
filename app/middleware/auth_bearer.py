@@ -1,55 +1,66 @@
-import os
-import jwt
-from fastapi import Depends, HTTPException, status
+# app/middleware/auth_bearer.py
+from fastapi import Request, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import jwt
+from app.models.user import User as UserModel
 from sqlalchemy.orm import Session
 from app.config.database import get_db
-from app.models.user import User as UserModel
+from fastapi import Depends
 
-# Menggunakan utilitas bawaan FastAPI untuk membaca skema 'Bearer Token' di Header
 security = HTTPBearer()
 
-JWT_SECRET = os.getenv("JWT_SECRET", "supersecretkeyruangsisa2026")
+# 🟢 PERBAIKAN SAKLAK: Ganti SECRET_KEY menjadi JWT_SECRET agar dicintai auth.py
+JWT_SECRET = "fallback_secret_key" 
 ALGORITHM = "HS256"
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)):
-    token = credentials.credentials
-    
-    # Set standar error jika token tidak sah
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Sesi login tidak valid atau telah berakhir!",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    
-    try:
-        # 1. PERCOBAAN PERTAMA: Bongkar normal standar (Ini aman buat Login Google lu)
-        try:
-            payload = jwt.decode(token, JWT_SECRET, algorithms=[ALGORITHM])
-        except jwt.ExpiredSignatureError:
-            # 2. JALUR DEBUGBYPASS: Jika ternyata token lokal lu expired pas buka Log,
-            # kita bypass expired-nya secara halus tanpa ganggu gugat Google Auth
-            payload = jwt.decode(token, JWT_SECRET, algorithms=[ALGORITHM], options={"verify_exp": False})
-            
-        user_id = payload.get("user_id") or payload.get("sub")
-        
-        if user_id is None:
-            raise credentials_exception
-            
-    except jwt.PyJWTError:
-        raise credentials_exception
-            
-    except jwt.PyJWTError:
-        # Jika token rusak, dimodifikasi, atau expired, langsung lempar eror
-        raise credentials_exception
+class JWTBearer(HTTPBearer):
+    def __init__(self, auto_error: bool = True):
+        super(JWTBearer, self).__init__(auto_error=auto_error)
 
-    # 2. Cari data user di database berdasarkan ID yang ada di dalam token
-    # (Pastikan di-convert ke int jika database lu bertipe Integer agar query SQLite-nya akurat)
-    user_id_clean = int(user_id) if str(user_id).isdigit() else user_id
-    user = db.query(UserModel).filter(UserModel.id == user_id_clean).first()
+    async def __call__(self, request: Request):
+        credentials: HTTPAuthorizationCredentials = await super(JWTBearer, self).__call__(request)
+        if credentials:
+            if not credentials.scheme == "Bearer":
+                raise HTTPException(status_code=403, detail="Skema autentikasi harus Bearer!")
+            
+            token = credentials.credentials
+            return self.verify_jwt(token)
+        else:
+            raise HTTPException(status_code=403, detail="Token autentikasi tidak ditemukan!")
+
+    # 🟢 PERBAIKAN TIPE DATA: Ubah type hint kembalian dari 'str' menjadi 'dict' (karena payload berupa JSON/Dict)
+    def verify_jwt(self, jwtoken: str) -> dict:
+        try:
+            payload = jwt.decode(jwtoken, JWT_SECRET, algorithms=[ALGORITHM])
+            
+            # 🖥️ DEBUG TERMINAL: Biar lu bisa ngelihat isi payload asli buatan file login lu!
+            print(f"==================================================")
+            print(f"📡 [DEBUG PAYLOAD BACKEND] Isi token lu: {payload}")
+            print(f"==================================================")
+            
+            return payload
+        except jwt.ExpiredSignatureError:
+            raise HTTPException(status_code=401, detail="Sesi login telah kedaluwarsa, Beh!")
+        except jwt.InvalidTokenError:
+            raise HTTPException(status_code=401, detail="Sesi login tidak valid atau telah berakhir!")
+
+
+def get_current_user(token: dict = Depends(JWTBearer()), db: Session = Depends(get_db)):
+    # Jika token bernilai None atau False karena tidak lolos validasi di atas
+    if not token:
+        raise HTTPException(status_code=401, detail="Token tidak sah atau payload kosong!")
     
-    if user is None:
-        raise credentials_exception
-        
-    # 3. Kembalikan objek user lengkap ke router yang memanggil
+    # 🟢 SAKTI & ADAPTIF: Skenario baca klaim ID user secara fleksibel agar lolos dari jeratan 'Token tidak sah!'
+    user_id = token.get("user_id") or token.get("id") or token.get("sub")
+    
+    if not user_id:
+        raise HTTPException(
+            status_code=401, 
+            detail=f"Token berhasil didekripsi, tapi backend gak nemu key 'user_id' atau 'id' di payload: {token}"
+        )
+    
+    user = db.query(UserModel).filter(UserModel.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="User pemilik token tidak ditemukan di database!")
+    
     return user

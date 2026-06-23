@@ -1,19 +1,17 @@
 import json
+import jwt
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy.orm import Session
 from app.config.database import SessionLocal
 from app.models.activity_log import ActivityLog
-import jwt
-from app.middleware.auth_bearer import JWT_SECRET, ALGORITHM
 
 class ActivityLogMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        # 1. Biarkan request jalan dulu ke endpoint biar kita tahu status akhirnya (sukses/gagal)
+        # 1. Biarkan request utama meluncur bebas ke endpoint tujuan (Anti-Blocking Gerbang)
         response = await call_next(request)
         
         # Kita hanya mencatat aksi perubahan data atau login/register (POST, PUT, DELETE)
-        # Serta pastikan status responnya sukses (200/201) biar log yang masuk valid
         if request.method in ["POST", "PUT", "DELETE"] and response.status_code in [200, 201]:
             db: Session = SessionLocal()
             try:
@@ -22,22 +20,22 @@ class ActivityLogMiddleware(BaseHTTPMiddleware):
                 details = {}
                 user_id = None
 
-                # 2. DETEKSI USER DARI TOKEN JWT (Dengan Fallback Pengaman Ganda)
+                # 2. DETEKSI USER DENGAN MODE SILENT (Ignore Signature & Expired)
                 auth_header = request.headers.get("Authorization")
                 if auth_header and auth_header.startswith("Bearer "):
                     try:
                         token = auth_header.split(" ")[1]
-                        # Taktik cerdas biar gak tabrakan sama token Google
-                        try:
-                            payload = jwt.decode(token, JWT_SECRET, algorithms=[ALGORITHM])
-                        except jwt.ExpiredSignatureError:
-                            payload = jwt.decode(token, JWT_SECRET, algorithms=[ALGORITHM], options={"verify_exp": False})
-                            
-                        user_id = payload.get("user_id") or payload.get("sub")
+                        # 🟢 TRIK AMAN: Kupas payload murni tanpa memvalidasi signature kunci, 
+                        # Biar token Google atau token kadaluarsa tidak bikin log-nya crash/mental!
+                        payload = jwt.decode(
+                            token, 
+                            options={"verify_signature": False, "verify_exp": False}
+                        )
+                        user_id = payload.get("sub") or payload.get("user_id")
                     except Exception:
-                        pass
+                        pass # Cuek jika token gagal dikupas
 
-                # 3. PEMETAAN AKSI BIAR TEXT LOG-NYA CANTIK & RAPI
+                # 3. PEMETAAN AKSI TEXT LOG RUANGSISA
                 if "/auth/login" in path:
                     action = "Login Aplikasi"
                     details = {"status": "Sukses Masuk"}
@@ -51,18 +49,18 @@ class ActivityLogMiddleware(BaseHTTPMiddleware):
                     action = "Manajemen Kain Perca/Limbah"
                     details = {"method": request.method, "info": "Perubahan data post textile waste"}
 
-                # 4. KUNCI DATA KE DATABASE SQLITE (MENYESUAIKAN STRUKTUR KOLOM ASLI)
+                # 4. KUNCI DATA KE SQLITE
                 if user_id or "/auth/" in path:
                     log_entry = ActivityLog(
-                        user_id=int(user_id) if user_id and str(user_id).isdigit() else user_id,
-                        activity=action,                  # ◄ Kolom 'activity' asli DB
-                        description=json.dumps(details),  # ◄ Kolom 'description' asli DB
+                        user_id=int(user_id) if user_id and str(user_id).isdigit() else None,
+                        activity=action,                                  
+                        description=json.dumps(details),                  
                         ip_address=request.client.host if request.client else None,
                         user_agent=request.headers.get("user-agent")
                     )
                     db.add(log_entry)
                     db.commit()
-                    print(f"📡 [LOG AUTOMATION] Berhasil mencatat aktivitas dengan ID User [{user_id}]: {action}")
+                    print(f"📡 [LOG AUTOMATION] Berhasil menyimpan audit log untuk User ID [{user_id}]: {action}")
                     
             except Exception as e:
                 print(f"🚨 [LOG ERROR] Gagal mencatat log aktivitas: {e}")

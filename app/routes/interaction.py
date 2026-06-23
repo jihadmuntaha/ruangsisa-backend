@@ -112,3 +112,46 @@ def create_comment(
         print(f"❌ Error: {e}")
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+
+# 🟢 ✅ DELETE COMMENT - SINKRONISASI FLUTTER REALME LU, BEH!
+@router.delete("/posts/comments/{comment_id}", status_code=status.HTTP_200_OK)
+def delete_comment_by_id(
+    comment_id: int,
+    user_id: int, # ◄ Menangkap query param '?user_id=4' dari Flutter lu
+    db: Session = Depends(get_db)
+):
+    """
+    Menghapus komentar berdasarkan ID komentar dan memvalidasi ID user pemiliknya
+    """
+    print(f"🗑️ [DELETE COMMENT] Mencoba menghapus Comment ID: {comment_id} oleh User ID: {user_id}")
+    
+    # 1. Cari data komentarnya di SQLite
+    comment = db.query(CommentModel).filter(CommentModel.id == comment_id).first()
+    if not comment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="Komentar ini tidak ditemukan atau sudah terhapus duluan, Beh!"
+        )
+    
+    # 2. Validasi Keamanan: Pastikan user_id yang request cocok dengan pemilik komentar asli
+    if comment.user_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Aksi ilegal! Lu gak boleh menghapus komentar kontributor lain, Beh!"
+        )
+    
+    # 3. Ekstirpasi data dari database
+    try:
+        db.delete(comment)
+        db.commit()
+        print(f"✅ Comment ID {comment_id} sukses dihapus dari piringan hitam DB.")
+        
+        # Mengembalikan JSON respons sukses (Status 200) agar dibaca ijo royo-royo
+        return {
+            "status": "success",
+            "message": "Komentar kain perca berhasil dimusnahkan!"
+        }
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Gagal delete comment akibat: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Bentrok internal database: {str(e)}")

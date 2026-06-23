@@ -1,3 +1,4 @@
+# app/models/interaction.py (atau nama file model lu)
 from sqlalchemy import Column, Integer, Text, ForeignKey, TIMESTAMP, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -16,6 +17,7 @@ class CommentModel(Base):
     post = relationship("PostModel", back_populates="comments")
     user = relationship("User", back_populates="comments")
 
+
 class ChatRoomModel(Base):
     __tablename__ = "chats"
 
@@ -24,6 +26,10 @@ class ChatRoomModel(Base):
     user_two_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     last_message = Column(Text, nullable=True)
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+    # 🟢 PERBAIKAN SAKTI: Definisikan relasi ke User secara spesifik agar SQLAlchemy tidak bingung
+    user_one = relationship("User", foreign_keys=[user_one_id], overlaps="chat_rooms_v1")
+    user_two = relationship("User", foreign_keys=[user_two_id], overlaps="chat_rooms_v2")
 
     # 🔗 Relasi ke isi pesan
     messages = relationship("MessageModel", back_populates="room", cascade="all, delete-orphan")
@@ -41,4 +47,6 @@ class MessageModel(Base):
 
     # 🔗 Relasi balik ke room
     room = relationship("ChatRoomModel", back_populates="messages")
-    sender = relationship("User") # ◄ TAMBAHKAN INI agar nanti Flutter bisa langsung tahu siapa nama pengirim pesannya
+    
+    # 🟢 Relasi ke User pengirim pesan
+    sender = relationship("User", foreign_keys=[sender_id])

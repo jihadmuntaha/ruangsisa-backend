@@ -3,6 +3,8 @@ from sqlalchemy.orm import Session
 from app.config.database import engine, Base, SessionLocal, FORCE_LOCAL_SQLITE
 from fastapi.middleware.cors import CORSMiddleware 
 from app.middleware.activity_log import ActivityLogMiddleware
+from fastapi.staticfiles import StaticFiles
+import os
 
 # 1. Import Models dengan alias (m_) atau secara spesifik agar tidak bentrok dengan routes
 from app.models.post import CategoryModel
@@ -49,6 +51,12 @@ app = FastAPI(
     description="Web Service Pendukung Aplikasi C2C Eco-Social Media RuangSisa",
     version="1.0.0"
 )
+
+UPLOAD_DIR = "uploads"
+if not os.path.exists(UPLOAD_DIR):
+    os.makedirs(UPLOAD_DIR)
+
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 # 🔴 KUNCI PERBAIKAN: Pisahkan konfigurasi CORS dan ActivityLog secara mandiri!
 # Konfigurasi CORS agar bisa diakses dari domain manapun (Flutter app kita)

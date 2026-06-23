@@ -29,18 +29,27 @@ def get_or_create_chat_room(
     ).first()
 
     if existing_room:
-        return existing_room
+        room = existing_room
+    else:
+        # Jika belum ada, rakit room baru
+        new_room = ChatRoomModel(
+            user_one_id=current_user.id,
+            user_two_id=room_data.receiver_id,
+            last_message="Memulai obrolan..."
+        )
+        db.add(new_room)
+        db.commit()
+        db.refresh(new_room)
+        room = new_room
 
-    # Jika belum ada, rakit room baru
-    new_room = ChatRoomModel(
-        user_one_id=current_user.id,
-        user_two_id=room_data.receiver_id,
-        last_message="Memulai obrolan..."
-    )
-    db.add(new_room)
-    db.commit()
-    db.refresh(new_room)
-    return new_room
+    # 🟢 SUNTIK DATA LAWAN: Cari siapa lawan bicaranya untuk mempermudah GetX Flutter
+    receiver_id = room.user_two_id if room.user_one_id == current_user.id else room.user_one_id
+    receiver_user = db.query(UserModel).filter(UserModel.id == receiver_id).first()
+
+    # Set atribut receiver secara dinamis agar lolos validasi Pydantic ChatRoomResponse
+    room.receiver = receiver_user if receiver_user else UserModel(id=receiver_id, name="Kontributor RuangSisa")
+
+    return room
 
 
 # 📜 2. Ambil Semua Daftar Chat Aktif Saya (Menu Chat List di Flutter)
@@ -53,6 +62,15 @@ def get_my_chat_rooms(
     rooms = db.query(ChatRoomModel).filter(
         or_(ChatRoomModel.user_one_id == current_user.id, ChatRoomModel.user_two_id == current_user.id)
     ).order_by(ChatRoomModel.updated_at.desc()).all()
+    
+    for room in rooms:
+        # 🟢 FILTER DINAMIS: Tentukan siapa lawan bicara saya di room ini
+        receiver_id = room.user_two_id if room.user_one_id == current_user.id else room.user_one_id
+        receiver_user = db.query(UserModel).filter(UserModel.id == receiver_id).first()
+        
+        # Set atribut receiver secara dinamis agar lolos validasi Pydantic ChatRoomResponse
+        room.receiver = receiver_user if receiver_user else UserModel(id=receiver_id, name="Pengguna Keluar")
+        
     return rooms
 
 
@@ -81,6 +99,7 @@ def send_message(
     
     db.commit()
     db.refresh(new_message)
+    
     return new_message
 
 
@@ -101,4 +120,5 @@ def get_chat_history(
 
     # Ambil riwayat pesan, urutkan dari yang paling lama agar merayap logis ke bawah layar HP
     messages = db.query(MessageModel).filter(MessageModel.chat_id == chat_id).order_by(MessageModel.created_at.asc()).all()
+    
     return messages
