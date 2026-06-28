@@ -22,6 +22,7 @@ class User(Base):
     
     # 👤🔒 KOLOM SAKTI FACE EMBEDDING (Dikumpulin bareng kolom fisik atas biar rapi)
     face_embedding = Column(Text, nullable=True) 
+    face_vector =  Column(Text, nullable=True) 
     
     # 🕒 TIMESTAMP
     created_at = Column(DateTime, default=datetime.utcnow) # ◄ HANYA ADA SATU DI SINI

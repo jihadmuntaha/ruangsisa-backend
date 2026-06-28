@@ -42,7 +42,7 @@ def run_seeder():
         
         # Daftar kategori umum & universal untuk marketplace/donasi barang bekas
         data_kategori = [
-            {"category_name": "Pakaian & Perca", "icon_name": "checkroom"},
+            {"category_name": "Fashion", "icon_name": "checkroom"},
             {"category_name": "Sepatu & Alas Kaki", "icon_name": "shopping_bag"},
             {"category_name": "Perlengkapan Bayi", "icon_name": "child_care"},
             {"category_name": "Perabotan & Rumah Tangga", "icon_name": "chair"},

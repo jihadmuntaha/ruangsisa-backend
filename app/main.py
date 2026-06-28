@@ -28,7 +28,7 @@ def seed_initial_categories():
         if category_count == 0:
             print("🌱 Menjalankan seeder otomatis untuk kategori awal RuangSisa...")
             initial_categories = [
-                CategoryModel(id=1, category_name="Pakaian", icon_name="shirt"),
+                CategoryModel(id=1, category_name="Fashion", icon_name="shirt"),
                 CategoryModel(id=2, category_name="Elektronik", icon_name="phone_android"),
                 CategoryModel(id=3, category_name="Furnitur", icon_name="chair"),
                 CategoryModel(id=4, category_name="Buku", icon_name="menu_book"),
