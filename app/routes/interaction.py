@@ -7,6 +7,9 @@ from app.models.user import User
 from app.models.interaction import CommentModel
 from datetime import datetime
 
+# 🟢 SUNTIKKAN IMPORT HELPER FCM DI SINI
+from app.helpers.notification import send_fcm_notification
+
 router = APIRouter(prefix="/api", tags=["Interactions"])
 
 # ✅ GET COMMENTS BY POST ID
@@ -47,7 +50,7 @@ def get_comments_by_post(
     print(f"✅ Returning {len(result)} comments")
     return result
 
-# ✅ POST COMMENT - PERBAIKI
+# ✅ POST COMMENT - PERBAIKI WITH REAL-TIME NOTIFICATION
 @router.post("/posts/comments", status_code=status.HTTP_201_CREATED)
 def create_comment(
     post_id: int = Form(...),   # ← Perhatikan nama field
@@ -92,6 +95,30 @@ def create_comment(
         db.refresh(new_comment)
         
         print(f"✅ Comment created! ID: {new_comment.id}")
+        
+        # 🟢 SUNTIKKAN FITUR LOGIKA NOTIFIKASI FCM DI SINI
+        try:
+            # Ambil data pemilik postingan asli (penerima notifikasi)
+            post_owner = db.query(User).filter(User.id == post.user_id).first()
+            
+            # Kirim notif hanya jika pengomentar bukan pemilik postingan itu sendiri
+            if post_owner and post_owner.id != user.id:
+                if hasattr(post_owner, 'fcm_token') and post_owner.fcm_token:
+                    print(f"🔔 [FCM] Mengirim notifikasi komentar ke {post_owner.name}...")
+                    send_fcm_notification(
+                        target_token=post_owner.fcm_token,
+                        title="💬 Komentar Baru di Postingan Lu! 🎉",
+                        body=f"{user.name} mengomentari postingan lu: \"{new_comment.content[:50]}\"",
+                        data_payload={
+                            "click_action": "FLUTTER_NOTIFICATION_CLICK",
+                            "type": "comment",
+                            "post_id": str(post_id)
+                        }
+                    )
+                else:
+                    print(f"⚠️ [FCM] Skip: User {post_owner.name} tidak memiliki fcm_token di database.")
+        except Exception as fcm_err:
+            print(f"🚨 [FCM ERROR] Gagal mengirim push notification: {fcm_err}")
         
         return {
             "id": new_comment.id,

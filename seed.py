@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker
 # Memastikan Python mengenali folder 'app' dari root directory
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from app.models.user import UserModel  
+from app.models.user import UserModel 
 from app.models.post import CategoryModel
 
 load_dotenv()

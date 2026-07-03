@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, Any
 from datetime import datetime
 
 # 📥 1. Skema untuk membuat Room Chat baru
@@ -42,9 +42,10 @@ class ChatRoomResponse(BaseModel):
     user_one_id: int
     user_two_id: int
     last_message: Optional[str] = None
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
     # 🟢 SUNTIKAN SAKTI: Masukkan skema UserInChat sebagai receiver data lawan bicara!
-    receiver: UserInChat 
+    receiver: Optional[Any] = None
+    unread_count: int = 0
 
     class Config:
         from_attributes = True

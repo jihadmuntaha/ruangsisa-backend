@@ -1,5 +1,6 @@
 # app/models/interaction.py (atau nama file model lu)
-from sqlalchemy import Column, Integer, Text, ForeignKey, TIMESTAMP, Boolean
+from sqlalchemy import Column, Integer, Text, ForeignKey, TIMESTAMP, Boolean, String, DateTime
+from datetime import datetime
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.config.database import Base

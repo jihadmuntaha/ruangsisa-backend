@@ -2,9 +2,11 @@ from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.config.database import Base
+from app.models.notification import NotificationModel
 
 class User(Base):
     __tablename__ = "users"
+
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
@@ -15,6 +17,7 @@ class User(Base):
     avatar = Column(String(255), nullable=True)  # Untuk menyimpan URL foto profil dari Google
     eco_points = Column(Integer, default=0)
     google_id = Column(String(100), unique=True, index=True, nullable=True)  # ID unik dari Google OAuth
+    fcm_token = Column(String, nullable=True)  # Token FCM untuk push notification
     
     # 🔥 TAMBAHAN UNTUK OTP VERIFICATION
     is_verified = Column(Boolean, default=False)  # Status verifikasi email
@@ -43,3 +46,6 @@ class User(Base):
 
     # Relasi ke tabel comments (1 user bisa punya banyak komentar)
     comments = relationship("CommentModel", back_populates="user", cascade="all, delete-orphan")
+
+    # Relasi ke tabel notifications
+    notifications = relationship("NotificationModel", back_populates="user")

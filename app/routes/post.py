@@ -9,7 +9,7 @@ from datetime import datetime
 
 router = APIRouter(prefix="/api", tags=["Posts"])
 
-# ✅ GET ALL POSTS - dengan joinedload yang benar
+# ✅ GET ALL POSTS - Bersih total dari jalur /uploads/ lama
 @router.get("/posts")
 def get_all_posts(
     skip: int = Query(0, ge=0),
@@ -22,7 +22,6 @@ def get_all_posts(
     """
     print("📡 [GET /api/posts] Request received")
     
-    # ✅ Gunakan joinedload untuk eager loading author
     query = db.query(PostModel).options(joinedload(PostModel.author))
     
     if category_id:
@@ -32,7 +31,6 @@ def get_all_posts(
     
     result = []
     for post in posts:
-        # ✅ Data author dari relationship
         author_name = "User RuangSisa"
         author_avatar = None
         
@@ -40,13 +38,18 @@ def get_all_posts(
             author_name = post.author.name
             author_avatar = post.author.avatar
         
+        # 🟢 AUTO-FIX JALUR: Potong & ubah otomatis jika DB masih menyimpan string lama
+        display_image = post.images
+        if display_image and display_image.startswith("/uploads/"):
+            display_image = display_image.replace("/uploads/", "/static/uploads/")
+        
         result.append({
             "id": post.id,
             "user_id": post.user_id,
             "category_id": post.category_id,
             "title": post.title,
             "description": post.description,
-            "images": post.images,
+            "images": display_image,  # Menggunakan jalur /static/
             "post_type": post.post_type,
             "price": post.price,
             "barter_wishlist": post.barter_wishlist,
@@ -63,7 +66,7 @@ def get_all_posts(
     return result
 
 
-# ✅ GET SINGLE POST
+# ✅ GET SINGLE POST - Diproteksi juga agar tidak memuntahkan 404
 @router.get("/posts/{post_id}")
 def get_post_by_id(
     post_id: int,
@@ -73,13 +76,18 @@ def get_post_by_id(
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
     
+    # 🟢 AUTO-FIX JALUR: Proteksi link single post agar Flutter tidak dapet /uploads/
+    display_image = post.images
+    if display_image and display_image.startswith("/uploads/"):
+        display_image = display_image.replace("/uploads/", "/static/uploads/")
+    
     return {
         "id": post.id,
         "user_id": post.user_id,
         "category_id": post.category_id,
         "title": post.title,
         "description": post.description,
-        "images": post.images,
+        "images": display_image,  # Menggunakan jalur /static/
         "post_type": post.post_type,
         "price": post.price,
         "barter_wishlist": post.barter_wishlist,
@@ -129,18 +137,16 @@ async def create_post(
         print(f"   - category_id: {category_id}")
         print("=" * 50)
         
-        # Validasi user
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
             raise HTTPException(status_code=404, detail=f"User {user_id} not found")
         
-        # Validasi category
         category = db.query(CategoryModel).filter(CategoryModel.id == category_id).first()
         if not category:
             raise HTTPException(status_code=404, detail=f"Category {category_id} not found")
         
-        # Save image
-        UPLOAD_DIR = "uploads"
+        # Simpan file ke root folder static/uploads
+        UPLOAD_DIR = os.path.join(os.getcwd(), "static", "uploads")
         os.makedirs(UPLOAD_DIR, exist_ok=True)
         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -151,13 +157,14 @@ async def create_post(
         with open(file_path, "wb") as buffer:
             buffer.write(content)
         
-        # Create post
+        db_image_url = f"/static/uploads/{safe_filename}"
+        
         new_post = PostModel(
             user_id=user_id,
             category_id=category_id,
             title=title,
             description=description,
-            images=f"/uploads/{safe_filename}",
+            images=db_image_url,
             post_type=post_type,
             price=price if post_type == "Dijual" else None,
             barter_wishlist=barter_wishlist if post_type == "Barter" else None,

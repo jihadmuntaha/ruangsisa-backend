@@ -168,16 +168,32 @@ async def verify_change_password(
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Gagal memverifikasi OTP: {str(e)}")
 
-# ==========================================
-# 4. ENDPOINT LOG AKTIVITAS (BAWAAN ASLI LU)
-# ==========================================
+# =======================================================================
+# 4. ENDPOINT LOG AKTIVITAS (YANG SUDAH STERIL & USER-FRIENDLY)
+# =======================================================================
 @router.get("/logs")
 def get_user_activity_logs(
     db: Session = Depends(get_db),
     current_user: UserModel = Depends(get_current_user) 
 ):
     try:
-        logs = db.query(ActivityLog).filter(ActivityLog.user_id == current_user.id).order_by(ActivityLog.created_at.desc()).all()
+        # 🟢 1. BERSIHKAN DAFTAR: Tentukan aksi apa saja yang penting & layak masuk UI
+        ALLOWED_ACTIVITIES = [
+            "REGISTER", 
+            "LOGIN", 
+            "UPDATE_PASSWORD", 
+            "UPDATE_PROFILE", 
+            "CREATE_POST", 
+            "UPDATE_POST", 
+            "DELETE_POST",
+            "CREATE_CHAT_ROOM"
+        ]
+        
+        # 🟢 2. SUNTIK .in_() DI QUERY: Otomatis menyaring aksi penting saja dari database
+        logs = db.query(ActivityLog).filter(
+            ActivityLog.user_id == current_user.id,
+            ActivityLog.activity.in_(ALLOWED_ACTIVITIES) # <-- Mengunci hanya daftar di atas
+        ).order_by(ActivityLog.created_at.desc()).all()
         
         formatted_logs = []
         for log in logs:
