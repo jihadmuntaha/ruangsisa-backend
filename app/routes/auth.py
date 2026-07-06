@@ -32,9 +32,13 @@ router = APIRouter(
     tags=["Authentication"]
 )
 
-TEMP_DIR = "temp_faces"
-os.makedirs(TEMP_DIR, exist_ok=True)
+if os.environ.get("VERCEL"):
+    TEMP_DIR = "/tmp/temp_faces"
+else:
+    TEMP_DIR = "temp_faces"
 
+# Pembuatan folder ini sekarang aman murni tidak akan crash lagi!
+os.makedirs(TEMP_DIR, exist_ok=True)
 # =========================================================================
 # 📝 1. ENDPOINT REGISTER
 # =========================================================================
