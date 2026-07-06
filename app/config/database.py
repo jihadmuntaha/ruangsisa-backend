@@ -57,3 +57,6 @@ def get_db():
         yield db
     finally:
         db.close()
+
+# Tambahkan ini di baris paling bawah file database.py lu, Beh!
+FORCE_LOCAL_SQLITE = False
