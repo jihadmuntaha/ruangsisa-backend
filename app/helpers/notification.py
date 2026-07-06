@@ -11,15 +11,30 @@ cred_path = os.path.join(BASE_DIR, "serviceAccountKey.json")
 print(f"🔍 [FCM CHECK] Mencari kunci privat Firebase di: {cred_path}")
 
 if not firebase_admin._apps:
-    if not os.path.exists(cred_path):
-        print(f"🚨 [FCM CRITICAL] File '{cred_path}' TIDAK DITEMUKAN, BEH! Pastikan filenya sudah ditaruh di folder root backend.")
-    else:
+    # 🟢 1. Cek dulu apakah ada string rahasia JSON di Environment Variable Vercel
+    firebase_env = os.environ.get("FIREBASE_CREDENTIALS")
+    
+    if firebase_env:
         try:
-            cred = credentials.Certificate(cred_path)
+            print("🛡️ [FCM] Menginisialisasi Firebase via Environment Variable Cloud...")
+            import json
+            cred_dict = json.loads(firebase_env)
+            cred = credentials.Certificate(cred_dict)
             firebase_admin.initialize_app(cred)
-            print("🛡️ [FCM SUCCESS] Firebase Admin SDK sukses terkoneksi murni!")
-        except Exception as init_err:
-            print(f"🚨 [FCM INIT ERROR] Gagal membaca isi json: {init_err}")
+            print("🛡️ [FCM SUCCESS] Firebase Admin SDK sukses terkoneksi di Cloud Vercel!")
+        except Exception as cloud_err:
+            print(f"🚨 [FCM CLOUD ERROR] Gagal inisialisasi dari Env Var: {cloud_err}")
+    else:
+        # 🟡 2. Jika tidak ada Env Var (berarti sedang lu run di laptop lokal), pakai file fisik
+        if not os.path.exists(cred_path):
+            print(f"🚨 [FCM CRITICAL] File '{cred_path}' TIDAK DITEMUKAN di lokal, BEH!")
+        else:
+            try:
+                cred = credentials.Certificate(cred_path)
+                firebase_admin.initialize_app(cred)
+                print("🛡️ [FCM SUCCESS] Firebase Admin SDK sukses terkoneksi murni di lokal!")
+            except Exception as init_err:
+                print(f"🚨 [FCM INIT ERROR] Gagal membaca isi json lokal: {init_err}")
 
 def send_fcm_notification(target_token: str, title: str, body: str, data_payload: dict = None):
     if not target_token:
