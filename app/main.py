@@ -1,28 +1,37 @@
-from fastapi import FastAPI
-from sqlalchemy.orm import Session
-from app.config.database import engine, Base, SessionLocal, FORCE_LOCAL_SQLITE
-from fastapi.middleware.cors import CORSMiddleware 
-from app.middleware.activity_log import ActivityLogMiddleware
-from fastapi.staticfiles import StaticFiles
+# =======================================================================
+# 🟢 1. LOAD ENV DI KASTA TERTINGGI (WAJIB PALING ATAS SEBELUM IMPORT APP)
+# =======================================================================
+from dotenv import load_dotenv
+load_dotenv()
+
 import os
 from pathlib import Path
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware 
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy.orm import Session
 
-# 1. Import Models dengan alias (m_) atau secara spesifik agar tidak bentrok dengan routes
+# Sekarang aman dimuat karena environment OS sudah memegang string Supabase!
+from app.config.database import engine, Base, SessionLocal, FORCE_LOCAL_SQLITE
+from app.middleware.activity_log import ActivityLogMiddleware
+
+# =======================================================================
+# 2. IMPORT MODELS DENGAN ALIAS
+# =======================================================================
 from app.models.post import CategoryModel
 from app.models.user import User
 from app.models.activity_log import ActivityLog
 from app.models import interaction as m_interaction
 from app.models import auth as m_auth
-from app.models import notification as m_notification
 from app.models.notification import NotificationModel
 
-# 2. Import Routers untuk didaftarkan ke FastAPI (Sudah disapu bersih dari duplikasi)
+# 3. Import Routers untuk didaftarkan ke FastAPI
 from app.routes import auth as r_auth, user as r_user, post as r_post, interaction as r_interaction, chat as r_chat, notification as r_notification
 
-# 3. Otomatis membuat tabel-tabel berdasarkan model yang terdaftar di database lokal (SQLite)
+# 4. Otomatis membuat tabel-tabel berdasarkan model yang terdaftar
 Base.metadata.create_all(bind=engine)
 
-# 4. Fungsi Otomatis untuk Seed Data Kategori jika tabel masih kosong
+# 5. Fungsi Otomatis untuk Seed Data Kategori jika tabel masih kosong
 def seed_initial_categories():
     db: Session = SessionLocal()
     try:
@@ -48,7 +57,7 @@ def seed_initial_categories():
 # Jalankan seeder tepat setelah tabel dipastikan ada
 seed_initial_categories()
 
-# 5. Inisialisasi FastAPI
+# 6. Inisialisasi FastAPI
 app = FastAPI(
     title="RuangSisa RESTful API",
     description="Web Service Pendukung Aplikasi C2C Eco-Social Media RuangSisa",
@@ -56,17 +65,22 @@ app = FastAPI(
 )
 
 # =======================================================================
-# 🟢 MANAGEMENT AUTOMATION FOLDER STATIC ASSETS (FOTO BARANG & PROFIL)
+# 🟢 MANAGEMENT AUTOMATION FOLDER STATIC ASSETS (KUNCI ABSOLUT PATH)
 # =======================================================================
 
-# 🔥 PERBAIKAN: Gunakan BASE_DIR yang konsisten
+# 🛡️ KUNCI PENGAMAN PATH: Pastikan mengarah ke root project utama murni!
 BASE_DIR = Path(__file__).resolve().parent  # folder app/
-ROOT_DIR = BASE_DIR.parent  # folder root project (ruangsisa_backend/)
+ROOT_DIR = BASE_DIR.parent                  # folder root project (ruangsisa_backend/)
 
-# Gunakan root directory untuk konsistensi dengan static files
+# Definisikan folder statis menggunakan path absolut Path objek
 STATIC_DIR = ROOT_DIR / "static"
 UPLOADS_DIR = STATIC_DIR / "uploads"   # Foto barang jualan kontributor
 AVATARS_DIR = STATIC_DIR / "avatars"   # Foto profil user/avatar
+
+# Membuat folder secara absolut murni di root project
+STATIC_DIR.mkdir(parents=True, exist_ok=True)
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+AVATARS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Debug path
 print("=" * 60)
@@ -78,37 +92,27 @@ print(f"   UPLOADS_DIR: {UPLOADS_DIR}")
 print(f"   AVATARS_DIR: {AVATARS_DIR}")
 print("=" * 60)
 
-# Membuat folder induk jika belum ada
-STATIC_DIR.mkdir(parents=True, exist_ok=True)
-UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-AVATARS_DIR.mkdir(parents=True, exist_ok=True)
-
-# 🔥 PERBAIKAN: Mount static files dari root directory
-# 1. 🔄 Jalur Utama Baru (Untuk Foto Profil & Upload Barang Baru)
-app.mount("/uploads", StaticFiles(directory="static/uploads"), name="zombie_uploads")
-
-# 2. 🟢 JALUR PINTAS SAKTI (Biar Postingan Lama di Home Gak Hilang!)
-# Baris ini bertugas menangani request dari data lama yang masih memanggil URL '/uploads'
+# 🔥 FIX MUTLAK MOUNTING: Menggunakan path STRING ABSOLUT agar tidak melenceng ke sub-folder /app!
+app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="zombie_uploads")
 app.mount("/static/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads_fallback")
-app.mount("/static/avatars", StaticFiles(directory="static/avatars"), name="avatars")
+app.mount("/static/avatars", StaticFiles(directory=str(AVATARS_DIR)), name="avatars")
 
-print("📸 [BACKEND STATIC] Jalur lama /uploads dan jalur baru /static sukses dibuka berdampingan!")
+print("📸 [BACKEND STATIC] Jalur lama /uploads dan jalur baru /static sukses dikunci absolut!")
 print(f"📸 [BACKEND STATIC] Static files served from: {STATIC_DIR}")
 
-# 🔴 KUNCI PERBAIKAN: Pisahkan konfigurasi CORS dan ActivityLog secara mandiri!
 # Konfigurasi CORS agar bisa diakses dari domain manapun (Flutter app kita)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Bisa diubah ke domain spesifik jika sudah deploy
+    allow_origins=["*"],  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 🟢 DAFTARKAN MIDDLEWARE LOG AKTIVITAS SECARA MANDIRI DI SINI, BEH!
+# DAFTARKAN MIDDLEWARE LOG AKTIVITAS SECARA MANDIRI Di SINI
 app.add_middleware(ActivityLogMiddleware)
 
-# 6. Daftarkan Routers menggunakan alias router yang baru
+# 7. Daftarkan Routers menggunakan alias router yang baru
 app.include_router(r_auth.router)
 app.include_router(r_user.router)
 app.include_router(r_post.router)

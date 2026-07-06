@@ -14,18 +14,39 @@ router = APIRouter(prefix="/api", tags=["Posts"])
 def get_all_posts(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=100),
+    search: Optional[str] = Query(None, description="Cari nama barang spesifik"),
+    post_type: Optional[str] = Query(None, description="Filter berdasarkan tipe post: Dijual atau Barter"),
+    min_price: Optional[int] = Query(None, description="Filter harga minimum (hanya untuk tipe Dijual)"),
+    max_price: Optional[int] = Query(None, description="Filter harga maksimum (hanya untuk tipe Dijual)"),
     category_id: Optional[int] = Query(None),
     db: Session = Depends(get_db)
 ):
     """
-    Mendapatkan semua postingan dengan filter opsional
+    Mendapatkan semua postingan dengan filter kategori dan pencarian teks spesifik
     """
-    print("📡 [GET /api/posts] Request received")
+    print("📡 [GET /api/posts] Request received dengan Filter Lanjutan")
     
     query = db.query(PostModel).options(joinedload(PostModel.author))
     
+    # 1. 🟢 SELEKSI LIVE SEARCH: Saring judul barang jika parameter 'search' dikirim dari Flutter
+    if search and search.strip() != "":
+        search_text = f"%{search.strip()}%"
+        query = query.filter(PostModel.title.like(search_text))
+
+    # 2. SELEKSI KATEGORI: Tetap berjalan berdampingan dengan aman
     if category_id:
         query = query.filter(PostModel.category_id == category_id)
+
+    # 3. SELEKSI TIPE POST: Dijual atau Barter
+    if post_type and post_type in ["Dijual", "Barter", "Donasi"]:
+        query = query.filter(PostModel.post_type == post_type)
+
+    # 4. SELEKSI HARGA: Hanya berlaku untuk tipe Dijual
+    if post_type == "Dijual":
+        if min_price is not None:
+            query = query.filter(PostModel.price >= min_price)
+        if max_price is not None:
+            query = query.filter(PostModel.price <= max_price)
     
     posts = query.order_by(PostModel.created_at.desc()).offset(skip).limit(limit).all()
     
@@ -64,7 +85,6 @@ def get_all_posts(
     
     print(f"✅ Returning {len(result)} posts")
     return result
-
 
 # ✅ GET SINGLE POST - Diproteksi juga agar tidak memuntahkan 404
 @router.get("/posts/{post_id}")
@@ -115,7 +135,7 @@ def get_all_categories(db: Session = Depends(get_db)):
     ]
 
 
-# ✅ CREATE POST
+# ✅ CREATE POST (SUDAH DIKUNCI STERIL DARI FOLDER PALSU)
 @router.post("/posts", status_code=status.HTTP_201_CREATED)
 async def create_post(
     title: str = Form(...),
@@ -145,16 +165,18 @@ async def create_post(
         if not category:
             raise HTTPException(status_code=404, detail=f"Category {category_id} not found")
         
-        # Simpan file ke root folder static/uploads
-        UPLOAD_DIR = os.path.join(os.getcwd(), "static", "uploads")
-        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        # 🟢 FIX SAKTI 1: Impor langsung UPLOADS_DIR absolut yang sudah kita kunci di main.py
+        from app.main import UPLOADS_DIR
         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         safe_filename = f"{timestamp}_{image.filename.replace(' ', '_')}"
-        file_path = os.path.join(UPLOAD_DIR, safe_filename)
+        
+        # 🟢 FIX SAKTI 2: Gunakan operator / bawaan pathlib agar aman di OS Windows maupun Linux murni
+        file_path = UPLOADS_DIR / safe_filename
         
         content = await image.read()
-        with open(file_path, "wb") as buffer:
+        # Buka file dengan konversi str(file_path) agar kompatibel dengan open()
+        with open(str(file_path), "wb") as buffer:
             buffer.write(content)
         
         db_image_url = f"/static/uploads/{safe_filename}"
