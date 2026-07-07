@@ -134,8 +134,7 @@ def get_all_categories(db: Session = Depends(get_db)):
         for cat in categories
     ]
 
-
-# ✅ CREATE POST (BYPASS SERVERLESS READ-ONLY SYSTEM)
+# ✅ CREATE POST (CLEAN CLOUD STORAGE INTEGRATION)
 @router.post("/posts", status_code=status.HTTP_201_CREATED)
 async def create_post(
     title: str = Form(...),
@@ -145,16 +144,17 @@ async def create_post(
     category_id: int = Form(...),
     price: Optional[int] = Form(None),
     barter_wishlist: Optional[str] = Form(None),
-    image: UploadFile = File(...),
+    image_url: str = Form(...),  # 🟢 URL asli kiriman dari Supabase Storage via Flutter
     db: Session = Depends(get_db),
 ):
     try:
         print("=" * 50)
-        print(f"📝 Creating post (Serverless Mode):")
+        print(f"📝 Creating post (Cloud Storage Mode):")
         print(f"   - title: {title}")
         print(f"   - user_id: {user_id}")
         print(f"   - post_type: {post_type}")
         print(f"   - category_id: {category_id}")
+        print(f"   - image_url: {image_url}")
         print("=" * 50)
         
         user = db.query(User).filter(User.id == user_id).first()
@@ -165,20 +165,16 @@ async def create_post(
         if not category:
             raise HTTPException(status_code=404, detail=f"Category {category_id} not found")
         
-        # 🟢 BYPASS SAKTI: Kita tidak melakukan penulisan file ke /static/uploads/ 
-        # karena serverless Vercel bersifat Read-Only.
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        safe_filename = f"{timestamp}_{image.filename.replace(' ', '_')}"
-        
-        # Siasati URL Gambar dengan link placeholder online gratis agar UI Flutter tetap bisa merender box gambar
-        db_image_url = f"https://picsum.photos/id/10/600/400"
+        # 🟢 BYPASS SAKTI TOTAL: Kita langsung pakai URL Supabase yang dibawa oleh image_url
+        # Dua baris logika pembentuk safe_filename lama sudah dihapus karena bikin eror undefined
+        db_image_url = image_url
         
         new_post = PostModel(
             user_id=user_id,
             category_id=category_id,
             title=title,
             description=description,
-            images=db_image_url, # Menyimpan link online valid
+            images=db_image_url, # Menyimpan link online valid dari Supabase Storage
             post_type=post_type,
             price=price if post_type == "Dijual" else None,
             barter_wishlist=barter_wishlist if post_type == "Barter" else None,
@@ -188,7 +184,7 @@ async def create_post(
         db.commit()
         db.refresh(new_post)
         
-        print(f"✅ Post created! ID: {new_post.id}")
+        print(f"✅ Post created successfully! ID: {new_post.id}")
         
         return {
             "id": new_post.id,
