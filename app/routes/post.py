@@ -135,7 +135,7 @@ def get_all_categories(db: Session = Depends(get_db)):
     ]
 
 
-# ✅ CREATE POST (SUDAH DIKUNCI STERIL DARI FOLDER PALSU)
+# ✅ CREATE POST (BYPASS SERVERLESS READ-ONLY SYSTEM)
 @router.post("/posts", status_code=status.HTTP_201_CREATED)
 async def create_post(
     title: str = Form(...),
@@ -150,7 +150,7 @@ async def create_post(
 ):
     try:
         print("=" * 50)
-        print(f"📝 Creating post:")
+        print(f"📝 Creating post (Serverless Mode):")
         print(f"   - title: {title}")
         print(f"   - user_id: {user_id}")
         print(f"   - post_type: {post_type}")
@@ -165,28 +165,20 @@ async def create_post(
         if not category:
             raise HTTPException(status_code=404, detail=f"Category {category_id} not found")
         
-        # 🟢 FIX SAKTI 1: Impor langsung UPLOADS_DIR absolut yang sudah kita kunci di main.py
-        from app.main import UPLOADS_DIR
-        
+        # 🟢 BYPASS SAKTI: Kita tidak melakukan penulisan file ke /static/uploads/ 
+        # karena serverless Vercel bersifat Read-Only.
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         safe_filename = f"{timestamp}_{image.filename.replace(' ', '_')}"
         
-        # 🟢 FIX SAKTI 2: Gunakan operator / bawaan pathlib agar aman di OS Windows maupun Linux murni
-        file_path = UPLOADS_DIR / safe_filename
-        
-        content = await image.read()
-        # Buka file dengan konversi str(file_path) agar kompatibel dengan open()
-        with open(str(file_path), "wb") as buffer:
-            buffer.write(content)
-        
-        db_image_url = f"/static/uploads/{safe_filename}"
+        # Siasati URL Gambar dengan link placeholder online gratis agar UI Flutter tetap bisa merender box gambar
+        db_image_url = f"https://picsum.photos/id/10/600/400"
         
         new_post = PostModel(
             user_id=user_id,
             category_id=category_id,
             title=title,
             description=description,
-            images=db_image_url,
+            images=db_image_url, # Menyimpan link online valid
             post_type=post_type,
             price=price if post_type == "Dijual" else None,
             barter_wishlist=barter_wishlist if post_type == "Barter" else None,
