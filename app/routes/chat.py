@@ -16,8 +16,8 @@ from app.services.fcm_service import send_push_notification
 
 router = APIRouter(prefix="/api/chats", tags=["Direct Messages & Chat"])
 
-# 🚪 1. Buka atau Buat Ruang Obrolan Baru (Anti-Duplikat Room)
-@router.post("/room", response_model=ChatRoomResponse)
+# 🚪 1. Buka atau Buat Ruang Obrolan Baru (Anti-Duplikat Room & Steril dari Pydantic Error)
+@router.post("/room") # 🟢 Hapus sementara response_model=ChatRoomResponse jika Pydantic lu masih strict
 def get_or_create_chat_room(
     room_data: ChatRoomCreate,
     db: Session = Depends(get_db),
@@ -48,14 +48,43 @@ def get_or_create_chat_room(
         db.refresh(new_room)
         room = new_room
 
-    # 🟢 SUNTIK DATA LAWAN: Cari siapa lawan bicaranya untuk mempermudah GetX Flutter
+    # 🟢 SUNTIK DATA LAWAN SECARA AMAN (DIKTIONER MURNI)
     receiver_id = room.user_two_id if room.user_one_id == current_user.id else room.user_one_id
     receiver_user = db.query(UserModel).filter(UserModel.id == receiver_id).first()
 
-    # Set atribut receiver secara dinamis agar lolos validasi Pydantic ChatRoomResponse
-    room.receiver = receiver_user if receiver_user else UserModel(id=receiver_id, name="Kontributor RuangSisa")
+    if receiver_user:
+        receiver_data = {
+            "id": receiver_user.id,
+            "name": receiver_user.name,
+            "avatar": getattr(receiver_user, "avatar", None)
+        }
+    else:
+        receiver_data = {
+            "id": receiver_id,
+            "name": "Kontributor RuangSisa",
+            "avatar": None
+        }
 
-    return room
+    # Hitung pesan belum dibaca khusus untuk room ini
+    unread_messages = db.query(MessageModel).filter(
+        and_(
+            MessageModel.chat_id == room.id,
+            MessageModel.sender_id != current_user.id,
+            MessageModel.is_read == False
+        )
+    ).count()
+
+    # 🟢 RETURN STRUKTUR DICTIONARY MANUAL BIAR FASTAPI GAK BINGUNG SERIALIZE
+    return {
+        "id": room.id,
+        "user_one_id": room.user_one_id,
+        "user_two_id": room.user_two_id,
+        "last_message": room.last_message,
+        "updated_at": room.updated_at,
+        "is_read": room.is_read if hasattr(room, "is_read") else False,
+        "receiver": receiver_data, # Sudah steril murni berupa Dict!
+        "unread_count": unread_messages
+    }
 
 
 # 📜 2. Ambil Semua Daftar Chat Aktif Saya (Menu Chat List di Flutter)
