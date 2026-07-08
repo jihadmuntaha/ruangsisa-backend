@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, String, Text, Enum, ForeignKey, TIMESTAM
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.config.database import Base
+from app.utils import get_jakarta_time
 
 class CategoryModel(Base):
     __tablename__ = "categories"
@@ -26,7 +27,7 @@ class PostModel(Base):
     price = Column(Integer, nullable=True)
     barter_wishlist = Column(String(255), nullable=True)
     status = Column(Enum("pending", "approved", "rejected", name="textile_status"), default="pending")
-    created_at = Column(TIMESTAMP, server_default=func.now())
+    created_at = Column(TIMESTAMP, default=get_jakarta_time)
 
     # ✅ RELATIONSHIP
     author = relationship("User", back_populates="posts", foreign_keys=[user_id])

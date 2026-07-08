@@ -3,6 +3,7 @@ from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.config.database import Base
 from app.models.notification import NotificationModel
+from app.utils import get_jakarta_time
 
 class User(Base):
     __tablename__ = "users"
@@ -31,8 +32,8 @@ class User(Base):
     face_vector =  Column(Text, nullable=True) 
     
     # 🕒 TIMESTAMP
-    created_at = Column(DateTime, default=datetime.utcnow) # ◄ HANYA ADA SATU DI SINI
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=get_jakarta_time)
+    updated_at = Column(DateTime(timezone=True), default=get_jakarta_time, onupdate=get_jakarta_time)
 
     # =========================================================================
     # 🔗 RELATIONSHIPS (Ditaruh paling bawah setelah kolom fisik beres)

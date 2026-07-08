@@ -8,6 +8,9 @@ from sqlalchemy.orm import Session
 from fastapi import Request
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 
 from app.models.activity_log import ActivityLog  # ◄ Tetap aman terjaga
 
@@ -18,6 +21,10 @@ JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "fallback_secret_key")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_EXPIRATION_SECONDS = int(os.getenv("JWT_EXPIRATION_SECONDS", 3600))
 
+# 🟢 FUNGSI SAKTI: Selalu menghasilkan waktu WIB (GMT+7) yang presisi
+def get_jakarta_time():
+    return datetime.now(ZoneInfo("Asia/Jakarta"))
+
 
 # ==========================================
 # 🎫 JWT TOKEN HELPERS
@@ -27,9 +34,9 @@ def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
     """Fungsi untuk men-generate token JWT dengan waktu kadaluarsa"""
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = get_jakarta_time() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(hours=24) # Default kadaluarsa 24 jam
+        expire = get_jakarta_time() + timedelta(hours=24) # Default kadaluarsa 24 jam
     
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)

@@ -26,7 +26,7 @@ from app.models import auth as m_auth
 from app.models.notification import NotificationModel
 
 # 3. Import Routers untuk didaftarkan ke FastAPI
-from app.routes import auth as r_auth, user as r_user, post as r_post, interaction as r_interaction, chat as r_chat, notification as r_notification
+from app.routes import auth as r_auth, user as r_user, post as r_post, interaction as r_interaction, chat as r_chat, notification as r_notification, forgot_password as r_forgot_password
 
 # 4. Otomatis membuat tabel-tabel berdasarkan model yang terdaftar
 Base.metadata.create_all(bind=engine)
@@ -119,6 +119,7 @@ app.include_router(r_post.router)
 app.include_router(r_interaction.router)
 app.include_router(r_chat.router)
 app.include_router(r_notification.router)
+app.include_router(r_forgot_password.router)  # Tambahkan router forgot_password.py
 
 @app.get("/", tags=["Default"])
 def root():

@@ -4,6 +4,7 @@ from datetime import datetime
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.config.database import Base
+from app.utils import get_jakarta_time
 
 class CommentModel(Base):
     __tablename__ = "comments"
@@ -12,7 +13,7 @@ class CommentModel(Base):
     post_id = Column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     content = Column(Text, nullable=False)
-    created_at = Column(TIMESTAMP, server_default=func.now())
+    created_at = Column(TIMESTAMP, default=get_jakarta_time)
 
     # Relationships
     post = relationship("PostModel", back_populates="comments")
@@ -44,7 +45,7 @@ class MessageModel(Base):
     sender_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     message_text = Column(Text, nullable=False)
     is_read = Column(Boolean, default=False)
-    created_at = Column(TIMESTAMP, server_default=func.now())
+    created_at = Column(TIMESTAMP, default=get_jakarta_time)
 
     # 🔗 Relasi balik ke room
     room = relationship("ChatRoomModel", back_populates="messages")
