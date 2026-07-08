@@ -51,4 +51,4 @@ class User(Base):
     notifications = relationship("NotificationModel", back_populates="user")
 
     # Tambahkan di dalam kelas User lu murni, Beh:
-    interactions = relationship("InteractionModel", back_populates="user", cascade="all, delete-orphan")
+    # interactions = relationship("InteractionModel", back_populates="user", cascade="all, delete-orphan")
