@@ -53,16 +53,16 @@ class MessageModel(Base):
     sender = relationship("User", foreign_keys=[sender_id])
 
 
-class InteractionModel(Base):
-    __tablename__ = "interactions"
+# class InteractionModel(Base):
+#     __tablename__ = "interactions"
 
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    post_id = Column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+#     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+#     post_id = Column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
+#     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     
-    interaction_type = Column(String(50), nullable=False, default="like")
-    created_at = Column(TIMESTAMP, server_default=func.now())
+#     interaction_type = Column(String(50), nullable=False, default="like")
+#     created_at = Column(TIMESTAMP, server_default=func.now())
 
-    # 🟢 HUBUNGAN RELASI AMAN (Menggunakan Target String Nama Kelas)
-    post = relationship("PostModel", back_populates="interactions")
-    user = relationship("User", back_populates="interactions")
+#     # 🟢 HUBUNGAN RELASI AMAN (Menggunakan Target String Nama Kelas)
+#     post = relationship("PostModel", back_populates="interactions")
+#     user = relationship("User", back_populates="interactions")

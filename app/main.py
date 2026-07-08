@@ -118,7 +118,7 @@ app.include_router(r_user.router)
 app.include_router(r_post.router)
 app.include_router(r_interaction.router)
 app.include_router(r_chat.router)
-#app.include_router(r_notification.router)
+app.include_router(r_notification.router)
 
 @app.get("/", tags=["Default"])
 def root():
