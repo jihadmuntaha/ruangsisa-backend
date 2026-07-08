@@ -51,3 +51,18 @@ class MessageModel(Base):
     
     # 🟢 Relasi ke User pengirim pesan
     sender = relationship("User", foreign_keys=[sender_id])
+
+class InteractionModel(Base):
+    __tablename__ = "interactions"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    post_id = Column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    
+    # Menampung tipe 'like', 'view', dll.
+    interaction_type = Column(String(50), nullable=False, default="like")
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+    # Relationships balik ke Post dan User
+    post = relationship("PostModel", back_populates="interactions")
+    user = relationship("User", back_populates="interactions")

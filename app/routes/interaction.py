@@ -1,16 +1,80 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Form
+from firebase_admin import messaging
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.config.database import get_db
+from app.middleware.auth_bearer import get_current_user
 from app.models.post import PostModel
 from app.models.user import User
 from app.models.interaction import CommentModel
 from datetime import datetime
+from models.interaction import InteractionModel
 
 # 🟢 SUNTIKKAN IMPORT HELPER FCM DI SINI
 from app.helpers.notification import send_fcm_notification
 
 router = APIRouter(prefix="/api", tags=["Interactions"])
+
+@router.post("/posts/{post_id}/like")
+def toggle_like_post(
+    post_id: int, 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    # 1. Pastikan postingan material sisa tersebut emang ada di DB
+    post = db.query(PostModel).filter(PostModel.id == post_id).first()
+    if not post:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="Material sisa tidak ditemukan, Beh!"
+        )
+
+    # 2. Cek apakah user sudah pernah like postingan ini sebelumnya
+    existing_like = db.query(InteractionModel).filter(
+        InteractionModel.post_id == post_id,
+        InteractionModel.user_id == current_user.id,
+        InteractionModel.interaction_type == "like"
+    ).first()
+
+    if existing_like:
+        # 🟢 KONDISI A: SUDAH ADA DATA -> UNLIKE (Hapus dari DB)
+        db.delete(existing_like)
+        db.commit()
+        return {"status": "success", "message": "Unlike berhasil", "is_liked": False}
+    
+    else:
+        # 🟢 KONDISI B: BELUM ADA DATA -> LIKE (Simpan data baru)
+        new_like = InteractionModel(
+            post_id=post_id,
+            user_id=current_user.id,
+            interaction_type="like"
+        )
+        db.add(new_like)
+        db.commit()
+
+        # 🔥 TRIGGER PUSH NOTIFICATION (Kirim notifikasi ke pemilik postingan)
+        # Catatan: Kita tidak kirim notif jika user nge-like postingannya sendiri
+        owner_post_user = post.author
+        if owner_post_user and owner_post_user.fcm_token and owner_post_user.id != current_user.id:
+            try:
+                message = messaging.Message(
+                    notification=messaging.Notification(
+                        title="❤️ Postingan Sisa Lu Disukai!",
+                        body=f"{current_user.name} menyukai material sisa '{post.title}' lu, Beh!",
+                    ),
+                    data={
+                        "click_action": "FLUTTER_NOTIFICATION_CLICK",
+                        "type": "like",
+                        "reference_id": str(post_id) # ID postingan biar pas diklik langsung dilempar ke detail post
+                    },
+                    token=owner_post_user.fcm_token,
+                )
+                response_fcm = messaging.send(message)
+                print(f"🚀 [FCM LIKE SUCCESS] Notifikasi suka meluncur! ID: {response_fcm}")
+            except Exception as fcm_err:
+                print(f"🚨 [FCM LIKE ERROR] Gagal mengirim via Firebase SDK: {str(fcm_err)}")
+
+        return {"status": "success", "message": "Like berhasil", "is_liked": True}
 
 # ✅ GET COMMENTS BY POST ID
 @router.get("/posts/{post_id}/comments")

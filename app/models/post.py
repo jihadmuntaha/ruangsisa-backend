@@ -34,3 +34,6 @@ class PostModel(Base):
     
     # ✅ TAMBAHKAN INI - relationship ke comments
     comments = relationship("CommentModel", back_populates="post", cascade="all, delete-orphan")
+
+    # ✅ TAMBAHKAN INI - relationship ke interactions
+    interactions = relationship("InteractionModel", back_populates="post", cascade="all, delete-orphan")
