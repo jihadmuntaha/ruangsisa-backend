@@ -22,6 +22,9 @@ class User(Base):
     # 🔥 TAMBAHAN UNTUK OTP VERIFICATION
     is_verified = Column(Boolean, default=False)  # Status verifikasi email
     verified_at = Column(DateTime, nullable=True)  # Waktu verifikasi
+
+    otp_code = Column(String(6), nullable=True)
+    otp_expires_at = Column(DateTime, nullable=True)
     
     # 👤🔒 KOLOM SAKTI FACE EMBEDDING (Dikumpulin bareng kolom fisik atas biar rapi)
     face_embedding = Column(Text, nullable=True) 
