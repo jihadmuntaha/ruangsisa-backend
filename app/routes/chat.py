@@ -187,12 +187,13 @@ def send_message(
             db.commit()
             print(f"💾 [DB SUCCESS] Riwayat notifikasi sukses dicatat untuk UserModel ID {receiver_id}!")
 
-            # 🔥 3. TEMBAK PUSH NOTIFICATION KE FIREBASE GOOGLE (MELETUP REALTIME!)
+# 🔥 3. TEMBAK PUSH NOTIFICATION KE FIREBASE GOOGLE (MELETUP REALTIME!)
             if receiver_user.fcm_token:
                 try:
                     # Ambil token dari instance objek receiver_user murni
                     token_tujuan = receiver_user.fcm_token 
                     
+                    # 🟢 PAYLOAD SAKTI: Sinkron murni dengan Front-End (Gunakan reference_id)
                     message = messaging.Message(
                         notification=messaging.Notification(
                             title=f"📩 Pesan Baru dari {current_user.name}!",
@@ -200,8 +201,9 @@ def send_message(
                         ),
                         data={
                             "click_action": "FLUTTER_NOTIFICATION_CLICK",
-                            "chat_id": str(msg_data.chat_id),
-                            "type": "chat"
+                            "type": "chat",
+                            "reference_id": str(current_user.id),
+                            "avatar": current_user.avatar if current_user.avatar else ""
                         },
                         token=token_tujuan,
                     )
