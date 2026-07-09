@@ -210,6 +210,9 @@ def get_user_activity_logs(
     db: Session = Depends(get_db),
     current_user: UserModel = Depends(get_current_user) 
 ):
+    """
+    Endpoint steril penyuplai log aktivitas ke Flutter (Anti-Leak & Double-Key Safety)
+    """
     try:
         ALLOWED_ACTIVITIES = [
             "REGISTER", 
@@ -237,11 +240,19 @@ def get_user_activity_logs(
             formatted_logs.append({
                 "id": log.id,
                 "user_id": log.user_id,
-                "action": log.activity, 
+                "activity": log.activity,  # 🟢 FIX KUNCI 1: Tetap kirim 'activity' biar Flutter Model gak crash!
+                "action": log.activity,    # 🟢 Cadangan aman jika UI terlanjur pakai kata 'action'
                 "details": details_obj,
                 "created_at": log.created_at.isoformat() if log.created_at else ""
             })
             
         return formatted_logs
+
     except Exception as e:
+        print(f"❌ Gagal memuat log aktivitas: {e}")
         raise HTTPException(status_code=500, detail=f"Gagal memuat log aktivitas: {str(e)}")
+        
+    finally:
+        # 🔌 KUNCI EMAS VERCEL: Putus session database secara mutlak!
+        db.close()
+        print("🔌 [DATABASE] Session /user/logs sukses ditutup bersih dan aman!")

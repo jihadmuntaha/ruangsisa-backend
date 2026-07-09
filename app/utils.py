@@ -63,24 +63,27 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def log_activity(db: Session, request: Request, activity: str, user_id: int = None, description: str = None):
     from app.models.activity_log import ActivityLog
     """
-    Fungsi otomatis untuk mencatat log aktivitas pengguna ke database.
-    Membaca IP Address dan User-Agent secara otomatis dari Request FastAPI.
+    Fungsi otomatis untuk mencatat log aktivitas pengguna ke database (Safe Session Commit).
     """
     ip_address = request.headers.get("x-forwarded-for") or (request.client.host if request.client else None)
     user_agent = request.headers.get("user-agent")
 
-    db_log = ActivityLog(
-        user_id=user_id,
-        activity=activity,
-        description=description,
-        ip_address=ip_address,
-        user_agent=user_agent
-    )
-    db.add(db_log)
-    db.commit()
-    db.refresh(db_log)
-    return db_log
-
+    try:
+        db_log = ActivityLog(
+            user_id=user_id,
+            activity=activity,
+            description=description,
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+        db.add(db_log)
+        db.commit()
+        db.refresh(db_log)
+        return db_log
+    except Exception as e:
+        db.rollback() # 🟢 PENTING: Jika gagal, langsung batalkan biar koneksi gak mengunci
+        print(f"❌ Gagal mencatat log activity: {e}")
+        return None
 
 # ==========================================
 # 📧 OTP & SMTP EMAIL HELPERS (NEW ADDITION)
