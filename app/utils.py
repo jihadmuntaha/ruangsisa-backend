@@ -12,7 +12,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 
-from app.models.activity_log import ActivityLog  # ◄ Tetap aman terjaga
+  # ◄ Tetap aman terjaga
 
 # Setup context untuk hashing password menggunakan bcrypt
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -61,6 +61,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 # ==========================================
 
 def log_activity(db: Session, request: Request, activity: str, user_id: int = None, description: str = None):
+    from app.models.activity_log import ActivityLog
     """
     Fungsi otomatis untuk mencatat log aktivitas pengguna ke database.
     Membaca IP Address dan User-Agent secara otomatis dari Request FastAPI.
