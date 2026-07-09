@@ -4,7 +4,7 @@ from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy.orm import Session
 from app.config.database import SessionLocal
-from app.models.activity_log import ActivityLog
+
 
 class ActivityLogMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -15,6 +15,10 @@ class ActivityLogMiddleware(BaseHTTPMiddleware):
         if request.method in ["POST", "PUT", "DELETE"] and response.status_code in [200, 201]:
             db: Session = SessionLocal()
             try:
+                # 🟢 SUNTIKKAN DI SINI (Local Import): Python baru membaca model ini 
+                # TEPAT saat ada transaksi data, menghentikan eror circular import secara total!
+                from app.models.activity_log import ActivityLog
+                
                 path = request.url.path
                 action = f"{request.method} {path}"
                 details = {}
@@ -25,8 +29,7 @@ class ActivityLogMiddleware(BaseHTTPMiddleware):
                 if auth_header and auth_header.startswith("Bearer "):
                     try:
                         token = auth_header.split(" ")[1]
-                        # 🟢 TRIK AMAN: Kupas payload murni tanpa memvalidasi signature kunci, 
-                        # Biar token Google atau token kadaluarsa tidak bikin log-nya crash/mental!
+                        # Trik aman lu tetap terjaga sempurna:
                         payload = jwt.decode(
                             token, 
                             options={"verify_signature": False, "verify_exp": False}
@@ -49,14 +52,15 @@ class ActivityLogMiddleware(BaseHTTPMiddleware):
                     action = "Manajemen Kain Perca/Limbah"
                     details = {"method": request.method, "info": "Perubahan data post textile waste"}
 
-                # 4. KUNCI DATA KE SQLITE
+                # 4. KUNCI DATA KE SUPABASE / POSTGRESQL LU
                 if user_id or "/auth/" in path:
                     log_entry = ActivityLog(
                         user_id=int(user_id) if user_id and str(user_id).isdigit() else None,
-                        activity=action,                                  
-                        description=json.dumps(details),                  
+                        activity=action,                                    
+                        description=json.dumps(details),                                  
                         ip_address=request.client.host if request.client else None,
                         user_agent=request.headers.get("user-agent")
+                        # Catatan: Kolom created_at otomatis terisi default(get_jakarta_time) dari model lu, Beh!
                     )
                     db.add(log_entry)
                     db.commit()
