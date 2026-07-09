@@ -211,15 +211,21 @@ def get_user_activity_logs(
     current_user: UserModel = Depends(get_current_user) 
 ):
     try:
-        print(f"📡 [GET /user/logs] Menarik SEMUA log untuk User ID: {current_user.id}")
+        print(f"📡 [GET /user/logs] Menarik log steril untuk User ID: {current_user.id}")
         
-        # 🟢 PLONG TOTAL: Tanpa filter kaku .in_(), biar "Login Google", "Manajemen Kain Perca", dll lolos semua!
-        logs = db.query(ActivityLog).filter(
+        # 1. Tarik semua log miliki user terlebih dahulu
+        all_logs = db.query(ActivityLog).filter(
             ActivityLog.user_id == current_user.id
         ).order_by(ActivityLog.created_at.desc()).all()
         
         formatted_logs = []
-        for log in logs:
+        for log in all_logs:
+            activity_name = log.activity or ""
+            
+            # 🟢 SENSOR PINTAR: Abaikan log sistem/routing yang bikin berantakan
+            if "/" in activity_name or "fcm-token" in activity_name.lower():
+                continue
+                
             try:
                 details_obj = json.loads(log.description) if log.description else {}
             except Exception:
@@ -228,14 +234,16 @@ def get_user_activity_logs(
             formatted_logs.append({
                 "id": log.id,
                 "user_id": log.user_id,
-                "activity": log.activity, # Mengirim string asli seperti "Login Google"
-                "action": log.activity,   # Cadangan aman untuk Flutter
+                "activity": activity_name, 
+                "action": activity_name,   
                 "details": details_obj,
                 "created_at": log.created_at.isoformat() if log.created_at else ""
             })
             
+        print(f"✅ Berhasil mengirim {len(formatted_logs)} log steril ke Flutter.")
         return formatted_logs
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
-        db.close() # Tetap jaga koneksi Vercel anti-timeout
+        db.close()
