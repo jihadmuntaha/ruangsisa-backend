@@ -64,8 +64,7 @@ def request_otp(payload: RequestOtpSchema, db: Session = Depends(get_db)):
         )
     
     return {"status": "success", "message": "Kode OTP pemulihan berhasil dikirim ke email lu, Beh! 🚀"}
-
-# ================= 🔥 TAHAP 2: VERIFIKASI KODE OTP =================
+# ================= 🔥 TAHAP 2: VERIFIKASI KODE OTP (FIXED DATETIME) =================
 @router.post("/verify")
 def verify_otp(payload: VerifyOtpSchema, db: Session = Depends(get_db)):
     db_otp = db.query(OTPVerification).filter(
@@ -78,12 +77,17 @@ def verify_otp(payload: VerifyOtpSchema, db: Session = Depends(get_db)):
     if not db_otp:
         raise HTTPException(status_code=400, detail="Kode OTP yang Anda masukkan salah, Beh!")
         
-    if get_jakarta_time() > db_otp.expired_at:
+    # 🟢 SINKRONISASI DATETIME ANTI-CRASH: Netralkan info zona waktu kedua belah pihak
+    now_naive = get_jakarta_time().replace(tzinfo=None)
+    expired_naive = db_otp.expired_at.replace(tzinfo=None) if db_otp.expired_at.tzinfo else db_otp.expired_at
+        
+    if now_naive > expired_naive:
         raise HTTPException(status_code=400, detail="Kode OTP sudah kedaluwarsa, silakan minta kode baru.")
         
     return {"status": "success", "detail": "OTP Valid"}
 
-# ================= 🔥 TAHAP 3: UPDATE PASSWORD BARU =================
+
+# ================= 🔥 TAHAP 3: UPDATE PASSWORD BARU (FIXED DATETIME) =================
 @router.post("/reset")
 def reset_password(payload: ResetPasswordSchema, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email).first()
@@ -97,8 +101,15 @@ def reset_password(payload: ResetPasswordSchema, db: Session = Depends(get_db)):
         OTPVerification.is_used == False
     ).order_by(OTPVerification.id.desc()).first()
         
-    if not db_otp or get_jakarta_time() > db_otp.expired_at:
-        raise HTTPException(status_code=400, detail="Sesi pemulihan tidak valid atau sudah habis.")
+    if not db_otp:
+        raise HTTPException(status_code=400, detail="Sesi pemulihan tidak valid.")
+        
+    # 🟢 SINKRONISASI DATETIME ANTI-CRASH: Netralkan info zona waktu kedua belah pihak
+    now_naive = get_jakarta_time().replace(tzinfo=None)
+    expired_naive = db_otp.expired_at.replace(tzinfo=None) if db_otp.expired_at.tzinfo else db_otp.expired_at
+        
+    if now_naive > expired_naive:
+        raise HTTPException(status_code=400, detail="Sesi pemulihan sudah habis masanya.")
         
     user.password = get_password_hash(payload.new_password)
     db_otp.is_used = True
