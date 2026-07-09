@@ -33,7 +33,7 @@ def request_otp(payload: RequestOtpSchema, db: Session = Depends(get_db)):
             detail="Alamat email tidak terdaftar dalam sistem RuangSisa, Beh!"
         )
     
-    generated_otp = str(random.randint(100000, 999999))
+    generated_otp = str(random.randint(1000, 9999))
     
     # Hanguskan OTP lama
     db.query(OTPVerification).filter(
