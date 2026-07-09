@@ -210,24 +210,12 @@ def get_user_activity_logs(
     db: Session = Depends(get_db),
     current_user: UserModel = Depends(get_current_user) 
 ):
-    """
-    Endpoint steril penyuplai log aktivitas ke Flutter (Anti-Leak & Double-Key Safety)
-    """
     try:
-        ALLOWED_ACTIVITIES = [
-            "REGISTER", 
-            "LOGIN", 
-            "UPDATE_PASSWORD", 
-            "UPDATE_PROFILE", 
-            "CREATE_POST", 
-            "UPDATE_POST", 
-            "DELETE_POST",
-            "CREATE_CHAT_ROOM"
-        ]
+        print(f"📡 [GET /user/logs] Menarik SEMUA log untuk User ID: {current_user.id}")
         
+        # 🟢 PLONG TOTAL: Tanpa filter kaku .in_(), biar "Login Google", "Manajemen Kain Perca", dll lolos semua!
         logs = db.query(ActivityLog).filter(
-            ActivityLog.user_id == current_user.id,
-            ActivityLog.activity.in_(ALLOWED_ACTIVITIES)
+            ActivityLog.user_id == current_user.id
         ).order_by(ActivityLog.created_at.desc()).all()
         
         formatted_logs = []
@@ -240,19 +228,14 @@ def get_user_activity_logs(
             formatted_logs.append({
                 "id": log.id,
                 "user_id": log.user_id,
-                "activity": log.activity,  # 🟢 FIX KUNCI 1: Tetap kirim 'activity' biar Flutter Model gak crash!
-                "action": log.activity,    # 🟢 Cadangan aman jika UI terlanjur pakai kata 'action'
+                "activity": log.activity, # Mengirim string asli seperti "Login Google"
+                "action": log.activity,   # Cadangan aman untuk Flutter
                 "details": details_obj,
                 "created_at": log.created_at.isoformat() if log.created_at else ""
             })
             
         return formatted_logs
-
     except Exception as e:
-        print(f"❌ Gagal memuat log aktivitas: {e}")
-        raise HTTPException(status_code=500, detail=f"Gagal memuat log aktivitas: {str(e)}")
-        
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
-        # 🔌 KUNCI EMAS VERCEL: Putus session database secara mutlak!
-        db.close()
-        print("🔌 [DATABASE] Session /user/logs sukses ditutup bersih dan aman!")
+        db.close() # Tetap jaga koneksi Vercel anti-timeout
