@@ -225,32 +225,53 @@ def verify_otp(payload: OTPVerify, request: Request, db: Session = Depends(get_d
 
 
 # =========================================================================
-# 🔥 5. ENDPOINT KIRIM ULANG OTP
+# 🔥 5. ENDPOINT KIRIM ULANG / REQUEST OTP FORGOT PASSWORD (FIXED CLOUD)
 # =========================================================================
-@router.post("/resend-otp")
-def resend_otp(payload: OTPResend, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+@router.post("/resend-otp")  # ◄ Atau sesuaikan dengan rute endpoint forgot request lu
+def resend_otp(payload: OTPResend, request: Request, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email).first()
     if not user:
         raise HTTPException(status_code=404, detail="Email ini belum terdaftar di RuangSisa!")
 
+    # Matikan kode OTP lama untuk purpose yang sama agar tidak bentrok
     db.query(OTPVerification).filter(
         OTPVerification.email == payload.email,
-        OTPVerification.purpose == payload.purpose
+        OTPVerification.purpose == payload.purpose  # 'forgot_password' atau 'register'
     ).update({"is_used": True})
 
     new_otp = generate_otp()
-    db_otp = OTPVerification(email=payload.email, otp_code=new_otp, purpose=payload.purpose)
+    
+    # Simpan jejak OTP baru ke database Supabase
+    db_otp = OTPVerification(
+        email=payload.email, 
+        otp_code=new_otp, 
+        purpose=payload.purpose # Kunci purpose-nya di DB agar tidak kanibal!
+    )
     db.add(db_otp)
     db.commit()
 
-    background_tasks.add_task(send_otp_email, payload.email, new_otp, payload.purpose)
+    # =========================================================================
+    # 🎯 KUNCI FIX UTAMA ANTI-FREEZE VERCEL CLOUD:
+    # Jangan pakai background_tasks.add_task() untuk forgot password!
+    # Panggil send_otp_email SECARA LANGSUNG & OPER PARAMETER PURPOSE NYA!
+    # =========================================================================
+    print(f"📡 Memulai ledakan SMTP murni untuk keperluan: {payload.purpose}")
+    
+    # Kita oper payload.purpose murni dari Flutter ('forgot_password')
+    email_sent = send_otp_email(payload.email, new_otp, payload.purpose)
+    
+    if not email_sent:
+        raise HTTPException(
+            status_code=500, 
+            detail="Gagal menyambungkan pipa SMTP Google. Log Vercel diblokir, Beh!"
+        )
 
     log_activity(
         db=db, request=request, user_id=user.id, activity="Resend OTP",
         description=f"User {user.name} meminta kirim ulang OTP untuk keperluan {payload.purpose}."
     )
 
-    return {"status": "success", "message": "Kode OTP baru sedang dikirim ke email lu!"}
+    return {"status": "success", "message": "Kode OTP baru sedang meluncur ke email lu, Beh! 🚀"}
 
 
 # =========================================================================
