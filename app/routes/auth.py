@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request, BackgroundTasks, UploadFile, File
-import numpy as np
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from google.oauth2 import id_token
@@ -12,7 +11,6 @@ import json
 from app.config.database import get_db
 from app.models.user import User
 from app.models.otp import OTPVerification  
-from app.schemas import user
 from app.schemas.user import UserRegister, UserResponse, UserLogin, TokenResponse
 from app.schemas.otp import OTPVerify, OTPResend   
 from app.utils import (
@@ -256,7 +254,7 @@ def resend_otp(payload: OTPResend, request: Request, background_tasks: Backgroun
 
 
 # =========================================================================
-# 👤🔒 API DAFTAR WAJAH PREMIUM (VERCEL PRODUCTION & SUPABASE VECTOR FIX)
+# 👤🔒 API DAFTAR WAJAH PREMIUM
 # =========================================================================
 @router.post("/register-face-premium")
 async def register_face_premium(email: str, files: List[UploadFile] = File(...), db: Session = Depends(get_db)):
@@ -271,20 +269,13 @@ async def register_face_premium(email: str, files: List[UploadFile] = File(...),
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        # Ambil hasil ekstraksi koordinat wajah
-        embedding_data = get_face_embedding(file_path)
+        embedding_json = get_face_embedding(file_path)
         
         if os.path.exists(file_path):
             os.remove(file_path)
 
-        if embedding_data:
-            # 🟢 SAKRAL: Jika tipenya string JSON, bongkar dulu jadi List Float Python murni [0.12, -0.45, ...]
-            if isinstance(embedding_data, str):
-                try:
-                    embedding_data = json.loads(embedding_data)
-                except Exception:
-                    pass
-            all_embeddings.append(embedding_data)
+        if embedding_json:
+            all_embeddings.append(embedding_json)
 
     if not all_embeddings:
         raise HTTPException(
@@ -292,35 +283,12 @@ async def register_face_premium(email: str, files: List[UploadFile] = File(...),
             detail="OpenCV gagal mendeteksi wajah di semua sampel foto. Cari tempat terang, Beh!"
         )
 
-    try:
-        # 🟢 1. Konversi ke numpy array untuk perhitungan matematis spasial
-        np_arrays = [np.array(emb) for emb in all_embeddings]
-        
-        # 🟢 2. Hitung rata-rata (mean) dari 3 sudut wajah biar jadi 1 vector induk
-        mean_embedding = np.mean(np_arrays, axis=0) 
-        
-        # 🟢 3. Konversi numpy array kembali ke list float standar Python
-        pure_list_floats = mean_embedding.tolist()
-
-        # 🟢 4. FORMAT SAKRAL PGVECTOR SUPABASE: 
-        # Tipe vector(128) Supabase maunya string murni berformat '[angka, angka, angka]' 
-        # TANPA ada string quotes JSON didalamnya!
-        string_vector_payload = f"[{','.join(map(str, pure_list_floats))}]"
-        
-        # Suntikkan langsung ke kolom face_embedding di database
-        user.face_embedding = string_vector_payload
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Gagal melakukan normalisasi format Face Vector Supabase: {str(e)}"
-        )
-
+    user.face_embedding = json.dumps(all_embeddings)
     db.commit()
 
     return {
         "status": "success",
-        "message": f"Premium Face ID untuk {email} sukses dikunci ke pgvector Supabase di Cloud! 👤🔒🔥"
+        "message": f"Premium Face ID untuk {email} sukses dikunci dari berbagai sudut! 👤🔒🔥"
     }
 
 
@@ -340,20 +308,16 @@ async def login_with_face(request: Request, email: str, file: UploadFile = File(
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
         
-# 🟢 DI DALAM @router.post("/login-face") LU, SESUAIKAN LOGIC NYA JADI GINI:
-    saved_embedding_str = user.face_embedding 
-    
-    # Bersihkan string format vector '[1.2, -0.4]' jadi list float Python
-    if isinstance(saved_embedding_str, str):
-        cleaned_str = saved_embedding_str.replace('[', '').replace(']', '')
-        saved_embedding = [float(x) for x in cleaned_str.split(',')]
-    else:
-        saved_embedding = saved_embedding_str
+    try:
+        saved_embeddings = json.loads(user.face_embedding)
+    except Exception:
+        saved_embeddings = [user.face_embedding]
         
     is_match = False
-    # Langsung tembak ke fungsi pembanding face recognition bawaan lu
-    if compare_faces(saved_embedding, file_path, threshold=0.15):
-        is_match = True
+    for single_embedding in saved_embeddings:
+        if compare_faces(single_embedding, file_path, threshold=0.15):
+            is_match = True
+            break
             
     if os.path.exists(file_path):
         os.remove(file_path)
