@@ -20,7 +20,7 @@ from app.middleware.activity_log import ActivityLogMiddleware
 # =======================================================================
 from app.models.post import CategoryModel
 from app.models.user import User
-from app.models.activity_log import ActivityLog
+#from app.models.activity_log import ActivityLog
 from app.models import interaction as m_interaction
 from app.models import auth as m_auth
 from app.models.notification import NotificationModel
