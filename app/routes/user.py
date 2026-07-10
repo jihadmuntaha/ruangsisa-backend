@@ -6,6 +6,8 @@ from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
 from fastapi.security import OAuth2PasswordBearer
+from firebase_admin import db
+from firebase_admin import db
 from sqlalchemy.orm import Session
 from app.config.database import get_db
 from app.models.user import User as UserModel 
@@ -214,12 +216,12 @@ def get_user_activity_logs(
         print(f"📡 [GET /user/logs] Menarik log steril untuk User ID: {current_user.id}")
         
         # 1. Tarik semua log miliki user terlebih dahulu
-        all_logs = db.query(ActivityLog).filter(
+        logs = db.query(ActivityLog).filter(
             ActivityLog.user_id == current_user.id
-        ).order_by(ActivityLog.created_at.desc()).all()
+        ).order_by(ActivityLog.id.desc()).all() # ◄ GANTI .created_at JADI .id DI SINI
         
         formatted_logs = []
-        for log in all_logs:
+        for log in logs:
             activity_name = log.activity or ""
             
             # 🟢 SENSOR PINTAR: Abaikan log sistem/routing yang bikin berantakan
