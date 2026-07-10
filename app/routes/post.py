@@ -2,9 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Form, Requ
 from sqlalchemy.orm import Session, joinedload
 from typing import Optional
 from app.config.database import get_db
+from app.middleware.auth_bearer import get_current_user
 from app.models.post import PostModel, CategoryModel
 from app.models.user import User
 from app.utils import log_activity
+
 
 router = APIRouter(prefix="/api", tags=["Posts"])
 
@@ -240,3 +242,148 @@ async def create_post(
         # 🔌 KUNCI EMAS VERCEL: Tutup session write secara mutlak setelah operasi kelar
         db.close()
         print("🔌 [DATABASE] Session create_post sukses ditutup murni!")
+
+
+# =======================================================================
+# 1. READ - Mengambil semua postingan milik user yang sedang login (untuk Profile)
+# =======================================================================
+@router.get("/my-posts")
+def get_my_posts(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user) # 🔒 Amankan pake token
+):
+    try:
+        print(f"📡 [GET /posts/my-posts] Menarik postingan milik User ID: {current_user.id}")
+        
+        posts = db.query(PostModel).filter(
+            PostModel.user_id == current_user.id
+        ).order_by(PostModel.created_at.desc()).all()
+        
+        # Mapping data biar Flutter lu gampang ngebacanya
+        result = []
+        for post in posts:
+            result.append({
+                "id": post.id,
+                "title": post.title,
+                "description": post.description,
+                "images": post.images,
+                "post_type": post.post_type,
+                "price": post.price,
+                "barter_wishlist": post.barter_wishlist,
+                "status": post.status,
+                "created_at": post.created_at.isoformat() if post.created_at else None
+            })
+        return result
+        
+    except Exception as e:
+        print(f"❌ Gagal mengambil postingan user: {e}")
+        raise HTTPException(status_code=500, detail="Gagal memuat postingan Anda")
+    finally:
+        db.close()
+        print("🔌 [DATABASE] Session /my-posts sukses ditutup bersih!")
+
+
+# =======================================================================
+# 2. UPDATE - Mengedit postingan milik sendiri
+# =======================================================================
+@router.put("/posts/{post_id}")
+def update_user_post(
+    post_id: int,
+    request: Request, # 🟢 Untuk auto log activity
+    title: str = Form(...),
+    description: str = Form(...),
+    post_type: str = Form(...),
+    price: Optional[int] = Form(None),
+    barter_wishlist: Optional[str] = Form(None),
+    image_url: Optional[str] = Form(None), # Opsional jika gambar gak diganti
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        # Cari postingannya di DB
+        post = db.query(PostModel).filter(PostModel.id == post_id).first()
+        
+        if not post:
+            raise HTTPException(status_code=404, detail="Postingan tidak ditemukan")
+            
+        # 🔒 Validasi: Pastikan dia gak ngedit postingan orang lain!
+        if post.user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Anda tidak berhak mengedit postingan ini")
+            
+        # Update datanya
+        post.title = title
+        post.description = description
+        post.post_type = post_type
+        post.price = price if post_type == "Dijual" else None
+        post.barter_wishlist = barter_wishlist if post_type == "Barter" else None
+        
+        if image_url:
+            post.images = image_url
+            
+        db.commit()
+        db.refresh(post)
+        
+        # 🟢 OTOMATIS SUNTIK LOG: Biar tercatat di riwayat aktivitas profile
+        log_activity(
+            db=db, request=request, user_id=current_user.id,
+            activity="Manajemen Kain Perca/Limbah",
+            description=f"Mengedit postingan: {title}"
+        )
+        
+        return {"status": "success", "message": "Postingan berhasil diperbarui"}
+        
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Gagal update postingan: {e}")
+        raise HTTPException(status_code=500, detail="Gagal memperbarui postingan")
+    finally:
+        db.close()
+        print("🔌 [DATABASE] Session update_post sukses ditutup bersih!")
+
+
+# =======================================================================
+# 3. DELETE - Menghapus postingan milik sendiri
+# =======================================================================
+@router.delete("/posts/{post_id}")
+def delete_user_post(
+    post_id: int,
+    request: Request, # 🟢 Untuk auto log activity
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        post = db.query(PostModel).filter(PostModel.id == post_id).first()
+        
+        if not post:
+            raise HTTPException(status_code=404, detail="Postingan tidak ditemukan")
+            
+        # 🔒 Validasi Hak Milik
+        if post.user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Anda tidak berhak menghapus postingan ini")
+            
+        saved_title = post.title
+        db.delete(post)
+        db.commit()
+        
+        # 🟢 OTOMATIS SUNTIK LOG
+        log_activity(
+            db=db, request=request, user_id=current_user.id,
+            activity="Manajemen Kain Perca/Limbah",
+            description=f"Menghapus postingan: {saved_title}"
+        )
+        
+        return {"status": "success", "message": "Postingan berhasil dihapus"}
+        
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Gagal delete postingan: {e}")
+        raise HTTPException(status_code=500, detail="Gagal menghapus postingan")
+    finally:
+        db.close()
+        print("🔌 [DATABASE] Session delete_post sukses ditutup bersih!")
