@@ -224,12 +224,13 @@ def get_user_activity_logs(
         for log in logs:
             activity_name = log.activity or ""
             
-            # # 🟢 SENSOR PINTAR YANG DI-UPGRADE:
-            # # Tetap loloskan jika mengandung kata "Manajemen" meskipun ada tanda "/"
-            # if "manajemen" not in activity_name.lower():
-            #     # Buang log sistem mentah yang mengandung method HTTP / routing
-            #     if "/" in activity_name or "fcm-token" in activity_name.lower():
-            #         continue
+            # 🟢 SENSOR PINTAR VERSI KEDUA (LEBIH AKURAT):
+            # Ubah ke lowercase dulu biar pencarian teksnya gak sensitif huruf kapital
+            act_lower = activity_name.lower()
+            
+            # Jika ini log sistem (mengandung "/" atau "fcm-token") DAN BUKAN bagian dari manajemen kain perca
+            if ("/" in act_lower or "fcm-token" in act_lower) and ("manajemen" not in act_lower):
+                continue # ✂️ Buang log sampah sistem, tapi loloskan Manajemen Kain Perca!
                 
             try:
                 details_obj = json.loads(log.description) if log.description else {}
