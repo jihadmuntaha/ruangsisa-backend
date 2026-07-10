@@ -224,9 +224,12 @@ def get_user_activity_logs(
         for log in logs:
             activity_name = log.activity or ""
             
-            # 🟢 SENSOR PINTAR: Abaikan log sistem/routing yang bikin berantakan
-            if "/" in activity_name or "fcm-token" in activity_name.lower():
-                continue
+            # # 🟢 SENSOR PINTAR YANG DI-UPGRADE:
+            # # Tetap loloskan jika mengandung kata "Manajemen" meskipun ada tanda "/"
+            # if "manajemen" not in activity_name.lower():
+            #     # Buang log sistem mentah yang mengandung method HTTP / routing
+            #     if "/" in activity_name or "fcm-token" in activity_name.lower():
+            #         continue
                 
             try:
                 details_obj = json.loads(log.description) if log.description else {}
