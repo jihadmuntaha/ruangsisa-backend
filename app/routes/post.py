@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Form
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Form, Request
 from sqlalchemy.orm import Session, joinedload
 from typing import Optional
 from app.config.database import get_db
 from app.models.post import PostModel, CategoryModel
 from app.models.user import User
+from app.utils import log_activity
 
 router = APIRouter(prefix="/api", tags=["Posts"])
 
@@ -148,9 +149,10 @@ def get_all_categories(db: Session = Depends(get_db)):
         print("🔌 [DATABASE] Session /categories sukses ditutup murni!")
 
 
-# ✅ CREATE POST - Penyelamatan data write & auto rollback jika gagal
+# ✅ CREATE POST (STERIL + AUTO LOG ACTIVITY)
 @router.post("/posts", status_code=status.HTTP_201_CREATED)
 async def create_post(
+    request: Request,  # 🟢 FIX KUNCI 1: Wajib disuntik request di awal parameter
     title: str = Form(...),
     description: str = Form(...),
     user_id: int = Form(...),
@@ -197,7 +199,16 @@ async def create_post(
         db.commit()
         db.refresh(new_post)
         
-        print(f"✅ Post created successfully! ID: {new_post.id}")
+        # 🟢 FIX KUNCI 2: Otomatis rekam aksi ke tabel activity_log menggunakan string manusiawi
+        log_activity(
+            db=db,
+            request=request,
+            activity="Manajemen Kain Perca/Limbah",
+            user_id=user_id,
+            description=f"Membuat postingan baru: {title}"
+        )
+        
+        print(f"✅ Post & Log Activity created successfully! ID: {new_post.id}")
         
         return {
             "id": new_post.id,
