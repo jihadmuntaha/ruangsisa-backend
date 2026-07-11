@@ -34,9 +34,9 @@ def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
     """Fungsi untuk men-generate token JWT dengan waktu kadaluarsa"""
     to_encode = data.copy()
     if expires_delta:
-        expire = get_jakarta_time() + expires_delta
+        expire = (datetime.datetime.now(datetime.timezone.utc)() + expires_delta)
     else:
-        expire = get_jakarta_time() + timedelta(hours=24) # Default kadaluarsa 24 jam
+        expire = (datetime.datetime.now(datetime.timezone.utc)() + timedelta(hours=24)) # Default kadaluarsa 24 jam
     
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)

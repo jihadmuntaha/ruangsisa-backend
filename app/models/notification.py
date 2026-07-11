@@ -2,7 +2,6 @@ from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.config.database import Base
-from app.utils import get_jakarta_time
 
 class NotificationModel(Base):
     __tablename__ = "notifications"
@@ -15,7 +14,10 @@ class NotificationModel(Base):
     type = Column(String, nullable=False)  
     reference_id = Column(String, nullable=True)  
     is_read = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=get_jakarta_time)
+    created_at = Column(
+    DateTime(timezone=True), 
+    default=lambda: datetime.datetime.now(datetime.timezone.utc)
+)
 
     # 🟢 Menunjuk ke model User, dan back_populates mencocokkan properti di User
     user = relationship("User", back_populates="notifications")
