@@ -27,5 +27,5 @@ aiosmtplib==5.1.1
 httpcore==1.0.9
 opencv-python-headless
 numpy==1.26.4
-supabase==2.4.0
-httpx>=0.25.0,<0.26.0
+supabase
+httpx>=0.28.1
