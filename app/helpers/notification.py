@@ -47,28 +47,40 @@ def send_fcm_notification(target_token: str, title: str, body: str, data_payload
         return False
 
     try:
+        # Pengecekan tipe data untuk payload
+        data = data_payload or {}
+        # Firebase messaging mewajibkan seluruh value di dalam data key berupa STRING
+        string_data = {k: str(v) for k, v in data.items()}
+
         message = messaging.Message(
             notification=messaging.Notification(
                 title=title,
                 body=body,
             ),
-            data=data_payload or {},
+            data=string_data,
             token=target_token,
             
-            # 🟢 SUNTIKAN SAKTI BINDING CHANNEL ANDROID (Bypass Mode Hemat Baterai)
+            # 🟢 SUNTIKAN SAKTI 2: Set priority high & ikat ke Channel ID Flutter lu
             android=messaging.AndroidConfig(
-                priority="high",  # Paksa status prioritas tertinggi
+                priority="high",  # ◄ Memaksa Android bangun dari mode deep sleep / hemat baterai
                 notification=messaging.AndroidNotification(
                     sound="default",
-                    channel_id="ruangsisa_high_channel",  # ◄ WAJIB SAMA PERSIS dengan ID di main.dart lu!
+                    channel_id="ruangsisa_high_channel",  # ◄ WAJIB SAMA dengan yang lu daftarin di main.dart!
+                    click_action="FLUTTER_NOTIFICATION_CLICK" # Memastikan event klik ketangkap Flutter
                 ),
             ),
+            # Tambahan untuk iOS (jika nanti lu tes pakai iPhone)
+            apns=messaging.APNSConfig(
+                payload=messaging.APNSPayload(
+                    aps=messaging.Aps(sound="default", content_available=True)
+                )
+            )
         )
         response = messaging.send(message)
-        print(f"🚀 [FCM SUCCESS] Notifikasi berhasil terkirim! ID: {response}")
+        print(f"🚀 [FCM SUCCESS] Notifikasi berhasil meletup di Cloud Vercel! ID: {response}")
         return True
     except Exception as e:
-        print(f"🚨 [FCM ERROR] Gagal mengirim pesan via Firebase: {e}")
+        print(f"🚨 [FCM ERROR] Gagal melempar payload ke Firebase: {e}")
         return False
     
 def save_and_send_notification(db: Session, user_id: int, title: str, body: str, notif_type: str, target_token: str = None, data_payload: dict = None):
