@@ -99,7 +99,6 @@ def update_profile(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Gagal memperbarui profil: {str(e)}"
         )
-
 @router.post("/upload-avatar")
 async def upload_avatar(
     file: UploadFile = File(...),
@@ -107,28 +106,25 @@ async def upload_avatar(
     current_user: UserModel = Depends(get_current_user)
 ):
     try:
-        # 🟢 GANTI KODE PEMOTONGAN LAMA DENGAN VALIDASI CONTENT_TYPE INI:
-        # Menghindari eror 'list index out of range' akibat nama file kosong dari Flutter
-        if file.content_type not in ["image/jpeg", "image/jpg", "image/png"]:
-            raise HTTPException(
-                status_code=400, 
-                detail="Format file wajib JPG atau PNG, Beh!"
-            )
+        # 🟢 JALUR AMAN: Jangan blokir content_type dari Flutter
+        # Kita deteksi tipenya, kalau aneh/kosong kita default-kan ke image/jpeg
+        c_type = file.content_type if file.content_type else "image/jpeg"
         
-        # Cari ekstensi cadangan dari content_type
-        extension = "png" if "png" in file.content_type else "jpg"
+        # Tentukan ekstensi file untuk disimpan di Supabase
+        extension = "png" if "png" in c_type.lower() else "jpg"
 
+        # Baca file langsung dari memory RAM
         content = await file.read()
         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"user_{current_user.id}_{timestamp}.{extension}"
         storage_path = f"profiles/{filename}"
 
-        # Jalur kirim resmi via SDK Supabase
+        # Kirim resmi via SDK Supabase
         supabase.storage.from_("avatars").upload(
             path=storage_path,
             file=content,
-            file_options={"content-type": file.content_type}
+            file_options={"content-type": c_type} # Gunakan tipe konten yang sudah disaring
         )
 
         public_avatar_url = supabase.storage.from_("avatars").get_public_url(storage_path)
@@ -139,8 +135,6 @@ async def upload_avatar(
 
         return {"status": "success", "avatar": public_avatar_url}
 
-    except HTTPException as http_err:
-        raise http_err
     except Exception as e:
         db.rollback()
         print(f"🚨 [AVATAR UPLOAD ERROR]: {str(e)}")
