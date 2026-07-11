@@ -6,6 +6,7 @@ from app.middleware.auth_bearer import get_current_user
 from app.models.post import PostModel, CategoryModel
 from app.models.user import User
 from app.utils import log_activity
+from app.schemas.post import PostUpdate # 🟢 Pastikan di-import skemanya
 
 
 router = APIRouter(prefix="/api", tags=["Posts"])
@@ -283,19 +284,12 @@ def get_my_posts(
         print("🔌 [DATABASE] Session /my-posts sukses ditutup bersih!")
 
 
-# =======================================================================
-# 2. UPDATE - Mengedit postingan milik sendiri
-# =======================================================================
+
 @router.put("/posts/{post_id}")
 def update_user_post(
     post_id: int,
-    request: Request, # 🟢 Untuk auto log activity
-    title: str = Form(...),
-    description: str = Form(...),
-    post_type: str = Form(...),
-    price: Optional[int] = Form(None),
-    barter_wishlist: Optional[str] = Form(None),
-    image_url: Optional[str] = Form(None), # Opsional jika gambar gak diganti
+    request: Request, 
+    payload: PostUpdate, # 🟢 Ubah Form(...) menjadi Pydantic Schema JSON
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -310,24 +304,24 @@ def update_user_post(
         if post.user_id != current_user.id:
             raise HTTPException(status_code=403, detail="Anda tidak berhak mengedit postingan ini")
             
-        # Update datanya
-        post.title = title
-        post.description = description
-        post.post_type = post_type
-        post.price = price if post_type == "Dijual" else None
-        post.barter_wishlist = barter_wishlist if post_type == "Barter" else None
+        # Update datanya menggunakan payload JSON
+        post.title = payload.title
+        post.description = payload.description
+        post.post_type = payload.post_type
+        post.price = payload.price if payload.post_type == "Dijual" else None
+        post.barter_wishlist = payload.barter_wishlist if payload.post_type == "Barter" else None
         
-        if image_url:
-            post.images = image_url
+        if payload.image_url:
+            post.images = payload.image_url
             
         db.commit()
         db.refresh(post)
         
-        # 🟢 OTOMATIS SUNTIK LOG: Biar tercatat di riwayat aktivitas profile
+        # 🟢 OTOMATIS SUNTIK LOG: Tetap aman tercatat di riwayat aktivitas
         log_activity(
             db=db, request=request, user_id=current_user.id,
             activity="Manajemen Kain Perca/Limbah",
-            description=f"Mengedit postingan: {title}"
+            description=f"Mengedit postingan: {payload.title}"
         )
         
         return {"status": "success", "message": "Postingan berhasil diperbarui"}
@@ -342,7 +336,6 @@ def update_user_post(
     finally:
         db.close()
         print("🔌 [DATABASE] Session update_post sukses ditutup bersih!")
-
 
 # =======================================================================
 # 3. DELETE - Menghapus postingan milik sendiri

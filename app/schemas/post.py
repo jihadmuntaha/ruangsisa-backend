@@ -79,3 +79,11 @@ class PostResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class PostUpdate(BaseModel):
+    title: str
+    description: str
+    post_type: str
+    price: Optional[int] = None
+    barter_wishlist: Optional[str] = None
+    image_url: Optional[str] = None
