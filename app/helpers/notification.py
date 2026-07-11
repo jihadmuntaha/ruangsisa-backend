@@ -54,6 +54,15 @@ def send_fcm_notification(target_token: str, title: str, body: str, data_payload
             ),
             data=data_payload or {},
             token=target_token,
+            
+            # 🟢 SUNTIKAN SAKTI BINDING CHANNEL ANDROID (Bypass Mode Hemat Baterai)
+            android=messaging.AndroidConfig(
+                priority="high",  # Paksa status prioritas tertinggi
+                notification=messaging.AndroidNotification(
+                    sound="default",
+                    channel_id="ruangsisa_high_channel",  # ◄ WAJIB SAMA PERSIS dengan ID di main.dart lu!
+                ),
+            ),
         )
         response = messaging.send(message)
         print(f"🚀 [FCM SUCCESS] Notifikasi berhasil terkirim! ID: {response}")
