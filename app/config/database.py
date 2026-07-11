@@ -42,10 +42,12 @@ else:
     # Cetak port yang digunakan untuk memastikan tidak meleset ke 5432 lagi
     print(f"☁️ [DATABASE] Menghubungkan ke Cloud PostgreSQL Supabase...")
     engine = create_engine(
-        DATABASE_URL, 
-        pool_size=3,          # Diperkecil agar ramah serverless
-        max_overflow=0,       # Batasi overflow koneksi di Vercel
-        pool_pre_ping=True
+        DATABASE_URL,
+        pool_size=3,          # Mengurangi jatah pool per instance Vercel agar tidak menembus angka 15
+        max_overflow=0,       # Jangan biarkan ada overflow koneksi tambahan
+        pool_timeout=10,      # Batas waktu tunggu antrean koneksi sebelum timeout
+        pool_recycle=1800,    # Lakukan recycle koneksi tiap 30 menit
+        pool_pre_ping=True    # ◄ WAJIB: Cek koneksi apakah masih hidup sebelum dipakai (Anti-Break)
     )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

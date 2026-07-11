@@ -133,19 +133,26 @@ def get_my_chat_rooms(
 
 
 # ✉️ 3. Kirim Pesan Teks Privat Baru + MELETUPKAN NOTIFIKASI FCM
-# 🟢 PENGAMNAN CLOUD VERCEL: Gunakan fungsi terpisah yang dipanggil lewat BackgroundTasks
 def _process_fcm_delivery(receiver_token: str, title: str, body: str, payload: dict):
-    """Fungsi eksekusi jabat tangan Firebase di background agar aman dari timeout Vercel"""
+    # Fungsi background tasks murni untuk jabat tangan Firebase saja
+    # JANGAN memanggil objek 'db' bawaan endpoint utama di dalam fungsi ini jika tidak diperlukan!
     try:
         message = messaging.Message(
             notification=messaging.Notification(title=title, body=body),
             data=payload,
             token=receiver_token,
+            android=messaging.AndroidConfig(
+                priority="high",
+                notification=messaging.AndroidNotification(
+                    sound="default",
+                    channel_id="ruangsisa_high_channel"
+                )
+            )
         )
-        response_fcm = messaging.send(message)
-        print(f"🚀 [FCM SUCCESS] Notifikasi berhasil meletup di Cloud Vercel! ID: {response_fcm}")
+        messaging.send(message)
+        print("🚀 [FCM SUCCESS] Berhasil meletup di latar belakang cloud!")
     except Exception as fcm_err:
-        print(f"🚨 [FCM CORE ERROR] Gagal melempar payload ke Firebase: {str(fcm_err)}")
+        print(f"🚨 [FCM ERROR]: {fcm_err}")
 
 
 @router.post("/messages", response_model=MessageResponse, status_code=status.HTTP_201_CREATED)
