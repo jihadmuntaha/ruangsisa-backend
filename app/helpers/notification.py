@@ -4,6 +4,7 @@ from app.models.notification import NotificationModel
 from sqlalchemy.orm import Session
 import os
 
+
 # 🟢 PERBAIKAN SAKLEK: Cari lokasi base directory proyek (ruangsisa_backend) secara presisi
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 cred_path = os.path.join(BASE_DIR, "serviceAccountKey.json")
@@ -47,9 +48,8 @@ def send_fcm_notification(target_token: str, title: str, body: str, data_payload
         return False
 
     try:
-        # Pengecekan tipe data untuk payload
+        # Pengecekan payload: Firebase mewajibkan semua KEY dan VALUE di dalam data berupa STRING
         data = data_payload or {}
-        # Firebase messaging mewajibkan seluruh value di dalam data key berupa STRING
         string_data = {k: str(v) for k, v in data.items()}
 
         message = messaging.Message(
@@ -60,16 +60,16 @@ def send_fcm_notification(target_token: str, title: str, body: str, data_payload
             data=string_data,
             token=target_token,
             
-            # 🟢 SUNTIKAN SAKTI 2: Set priority high & ikat ke Channel ID Flutter lu
+            # 🟢 SUNTIKAN PRIORITAS UTAMA: Memaksa Android memunculkan banner pop-up di layar luar
             android=messaging.AndroidConfig(
-                priority="high",  # ◄ Memaksa Android bangun dari mode deep sleep / hemat baterai
+                priority="high",  # Paksa status prioritas tertinggi (Bypass mode hemat baterai)
                 notification=messaging.AndroidNotification(
                     sound="default",
-                    channel_id="ruangsisa_high_channel",  # ◄ WAJIB SAMA dengan yang lu daftarin di main.dart!
-                    click_action="FLUTTER_NOTIFICATION_CLICK" # Memastikan event klik ketangkap Flutter
+                    channel_id="ruangsisa_high_channel",  # ◄ IKAT DENGAN ID YANG ADA DI MAIN.DART LU!
+                    click_action="FLUTTER_NOTIFICATION_CLICK"
                 ),
             ),
-            # Tambahan untuk iOS (jika nanti lu tes pakai iPhone)
+            # Pengaman tambahan untuk iOS
             apns=messaging.APNSConfig(
                 payload=messaging.APNSPayload(
                     aps=messaging.Aps(sound="default", content_available=True)
@@ -77,10 +77,10 @@ def send_fcm_notification(target_token: str, title: str, body: str, data_payload
             )
         )
         response = messaging.send(message)
-        print(f"🚀 [FCM SUCCESS] Notifikasi berhasil meletup di Cloud Vercel! ID: {response}")
+        print(f"🚀 [FCM SUCCESS] Notifikasi berhasil dikirim! ID: {response}")
         return True
     except Exception as e:
-        print(f"🚨 [FCM ERROR] Gagal melempar payload ke Firebase: {e}")
+        print(f"🚨 [FCM ERROR] Gagal mengirim pesan via Firebase: {e}")
         return False
     
 def save_and_send_notification(db: Session, user_id: int, title: str, body: str, notif_type: str, target_token: str = None, data_payload: dict = None):
