@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks # 🟢 1. Inject BackgroundTasks di sini
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 from typing import List
@@ -7,17 +7,16 @@ from app.models.interaction import ChatRoomModel, MessageModel
 from app.schemas.chat import ChatRoomCreate, ChatRoomResponse, MessageCreate, MessageResponse
 from app.middleware.auth_bearer import get_current_user
 from app.models.user import User as UserModel
-from app.services.fcm_service import send_push_notification
 from app.models.notification import NotificationModel
 from firebase_admin import messaging
 
-# 🟢 PERBAIKAN IMPORT SAKTI: Gunakan service terpusat agar riwayat otomatis masuk SQLite!
+# Import service terpusat milik lu
 from app.services.fcm_service import send_push_notification
 
 router = APIRouter(prefix="/api/chats", tags=["Direct Messages & Chat"])
 
-# 🚪 1. Buka atau Buat Ruang Obrolan Baru (Anti-Duplikat Room & Steril dari Pydantic Error)
-@router.post("/room") # 🟢 Hapus sementara response_model=ChatRoomResponse jika Pydantic lu masih strict
+# 🚪 1. Buka atau Buat Ruang Obrolan Baru
+@router.post("/room")
 def get_or_create_chat_room(
     room_data: ChatRoomCreate,
     db: Session = Depends(get_db),
@@ -26,7 +25,6 @@ def get_or_create_chat_room(
     if current_user.id == room_data.receiver_id:
         raise HTTPException(status_code=400, detail="Kamu tidak bisa chat dengan dirimu sendiri, Beh!")
 
-    # Cek apakah room antar kedua user ini sudah pernah dibuat sebelumnya
     existing_room = db.query(ChatRoomModel).filter(
         or_(
             and_(ChatRoomModel.user_one_id == current_user.id, ChatRoomModel.user_two_id == room_data.receiver_id),
@@ -37,7 +35,6 @@ def get_or_create_chat_room(
     if existing_room:
         room = existing_room
     else:
-        # Jika belum ada, rakit room baru
         new_room = ChatRoomModel(
             user_one_id=current_user.id,
             user_two_id=room_data.receiver_id,
@@ -48,7 +45,6 @@ def get_or_create_chat_room(
         db.refresh(new_room)
         room = new_room
 
-    # 🟢 SUNTIK DATA LAWAN SECARA AMAN (DIKTIONER MURNI)
     receiver_id = room.user_two_id if room.user_one_id == current_user.id else room.user_one_id
     receiver_user = db.query(UserModel).filter(UserModel.id == receiver_id).first()
 
@@ -65,7 +61,6 @@ def get_or_create_chat_room(
             "avatar": None
         }
 
-    # Hitung pesan belum dibaca khusus untuk room ini
     unread_messages = db.query(MessageModel).filter(
         and_(
             MessageModel.chat_id == room.id,
@@ -74,7 +69,6 @@ def get_or_create_chat_room(
         )
     ).count()
 
-    # 🟢 RETURN STRUKTUR DICTIONARY MANUAL BIAR FASTAPI GAK BINGUNG SERIALIZE
     return {
         "id": room.id,
         "user_one_id": room.user_one_id,
@@ -82,12 +76,12 @@ def get_or_create_chat_room(
         "last_message": room.last_message,
         "updated_at": room.updated_at,
         "is_read": room.is_read if hasattr(room, "is_read") else False,
-        "receiver": receiver_data, # Sudah steril murni berupa Dict!
+        "receiver": receiver_data,
         "unread_count": unread_messages
     }
 
 
-# 📜 2. Ambil Semua Daftar Chat Aktif Saya (Menu Chat List di Flutter)
+# 📜 2. Ambil Semua Daftar Chat Aktif Saya
 @router.get("/rooms", response_model=List[ChatRoomResponse])
 def get_my_chat_rooms(
     db: Session = Depends(get_db),
@@ -97,18 +91,17 @@ def get_my_chat_rooms(
         or_(ChatRoomModel.user_one_id == current_user.id, ChatRoomModel.user_two_id == current_user.id)
     ).order_by(ChatRoomModel.updated_at.desc()).all()
     
-    room_list = [] # 🟢 KITA PAKAI LIST BARU BIAR AMAN DARI STRUKTUR ORM ASLI
+    room_list = []
     
     for room in rooms:
         receiver_id = room.user_two_id if room.user_one_id == current_user.id else room.user_one_id
         receiver_user = db.query(UserModel).filter(UserModel.id == receiver_id).first()
         
-        # 🟢 MAPPING OBJECT RECEIVER JADI DICTIONARY BIASA AGAR PYDANTIC GAK BINGUNG
         if receiver_user:
             receiver_data = {
                 "id": receiver_user.id,
                 "name": receiver_user.name,
-                "avatar": getattr(receiver_user, "avatar", None) # Ambil avatar jika ada
+                "avatar": getattr(receiver_user, "avatar", None)
             }
         else:
             receiver_data = {
@@ -117,7 +110,6 @@ def get_my_chat_rooms(
                 "avatar": None
             }
         
-        # Hitung pesan belum dibaca
         unread_messages = db.query(MessageModel).filter(
             and_(
                 MessageModel.chat_id == room.id,
@@ -126,7 +118,6 @@ def get_my_chat_rooms(
             )
         ).count()
         
-        # 🟢 BENTUK STRUKTUR DICT YANG DIINGINKAN CHATROOMRESPONSE DENGAN KLOP
         room_list.append({
             "id": room.id,
             "user_one_id": room.user_one_id,
@@ -134,47 +125,57 @@ def get_my_chat_rooms(
             "last_message": room.last_message,
             "updated_at": room.updated_at,
             "is_read": room.is_read if hasattr(room, "is_read") else False,
-            "receiver": receiver_data, # Sudah berupa dict murni, lolos sensor Pydantic!
+            "receiver": receiver_data,
             "unread_count": unread_messages
         })
         
-    return room_list # Kembalikan list dict murni
+    return room_list
 
 
 # ✉️ 3. Kirim Pesan Teks Privat Baru + MELETUPKAN NOTIFIKASI FCM
+# 🟢 PENGAMNAN CLOUD VERCEL: Gunakan fungsi terpisah yang dipanggil lewat BackgroundTasks
+def _process_fcm_delivery(receiver_token: str, title: str, body: str, payload: dict):
+    """Fungsi eksekusi jabat tangan Firebase di background agar aman dari timeout Vercel"""
+    try:
+        message = messaging.Message(
+            notification=messaging.Notification(title=title, body=body),
+            data=payload,
+            token=receiver_token,
+        )
+        response_fcm = messaging.send(message)
+        print(f"🚀 [FCM SUCCESS] Notifikasi berhasil meletup di Cloud Vercel! ID: {response_fcm}")
+    except Exception as fcm_err:
+        print(f"🚨 [FCM CORE ERROR] Gagal melempar payload ke Firebase: {str(fcm_err)}")
+
+
 @router.post("/messages", response_model=MessageResponse, status_code=status.HTTP_201_CREATED)
 def send_message(
     msg_data: MessageCreate,
+    background_tasks: BackgroundTasks, # 🟢 2. Inject BackgroundTasks ke parameter endpoint
     db: Session = Depends(get_db),
     current_user: UserModel = Depends(get_current_user)
 ):
-    # Pastikan room-nya beneran valid
     room = db.query(ChatRoomModel).filter(ChatRoomModel.id == msg_data.chat_id).first()
     if not room:
         raise HTTPException(status_code=404, detail="Room chat tidak ditemukan!")
 
-    # Simpan pesan baru ke tabel messages
     new_message = MessageModel(
         chat_id=msg_data.chat_id,
         sender_id=current_user.id,
         message_text=msg_data.message_text
     )
     db.add(new_message)
-
-    # 🔄 Update kolom last_message di tabel chats agar Chat List di Flutter ikut ter-update otomatis
     room.last_message = msg_data.message_text
     
     db.commit()
     db.refresh(new_message)
     
-    # 🟢 ================= INTEGRASI STRUKTUR NOTIFIKASI DASAR (REAL-TIME FIX) =================
     try:
-        # 1. Tentukan siapa penerima pesan chat ini
         receiver_id = room.user_two_id if room.user_one_id == current_user.id else room.user_one_id
         receiver_user = db.query(UserModel).filter(UserModel.id == receiver_id).first()
         
         if receiver_user:
-            # 2. SIMPAN RIWAYAT NOTIFIKASI KE DATABASE
+            # 1. Simpan riwayat ke DB lokal terlebih dahulu
             new_notif_log = NotificationModel(
                 user_id=receiver_id,
                 title=f"📩 Pesan Baru dari {current_user.name}!",
@@ -187,50 +188,39 @@ def send_message(
             db.commit()
             print(f"💾 [DB SUCCESS] Riwayat notifikasi sukses dicatat untuk UserModel ID {receiver_id}!")
 
-# 🔥 3. TEMBAK PUSH NOTIFICATION KE FIREBASE GOOGLE (MELETUP REALTIME!)
+            # 2. Tembak push notification menggunakan BackgroundTasks (Bypass Pembekuan Vercel)
             if receiver_user.fcm_token:
-                try:
-                    # Ambil token dari instance objek receiver_user murni
-                    token_tujuan = receiver_user.fcm_token 
-                    
-                    # 🟢 PAYLOAD SAKTI: Sinkron murni dengan Front-End (Gunakan reference_id)
-                    message = messaging.Message(
-                        notification=messaging.Notification(
-                            title=f"📩 Pesan Baru dari {current_user.name}!",
-                            body=msg_data.message_text if len(msg_data.message_text) <= 60 else f"{msg_data.message_text[:60]}...",
-                        ),
-                        data={
-                            "click_action": "FLUTTER_NOTIFICATION_CLICK",
-                            "type": "chat",
-                            "reference_id": str(current_user.id),
-                            "avatar": current_user.avatar if current_user.avatar else ""
-                        },
-                        token=token_tujuan,
-                    )
-                    
-                    # Kirim paket sinyal ke server Google Firebase
-                    response_fcm = messaging.send(message)
-                    print(f"🚀 [FCM SUCCESS] Notifikasi berhasil meletup! ID: {response_fcm}")
-                except Exception as fcm_err:
-                    print(f"🚨 [FCM CORE ERROR] Gagal mengirim via Firebase SDK: {str(fcm_err)}")
+                payload_data = {
+                    "click_action": "FLUTTER_NOTIFICATION_CLICK",
+                    "type": "chat",
+                    "reference_id": str(current_user.id),
+                    "avatar": current_user.avatar if current_user.avatar else ""
+                }
+                
+                # 🚀 KUNCI SAKTI: Masukkan ke task latar belakang agar Vercel tidak membunuh proses di tengah jalan!
+                background_tasks.add_task(
+                    _process_fcm_delivery,
+                    receiver_token=receiver_user.fcm_token,
+                    title=f"📩 Pesan Baru dari {current_user.name}!",
+                    body=msg_data.message_text if len(msg_data.message_text) <= 60 else f"{msg_data.message_text[:60]}...",
+                    payload=payload_data
+                )
             else:
-                print(f"⚠️ [FCM SKIP] User {receiver_user.name} belum login di HP / fcm_token kosong murni.")
+                print(f"⚠️ [FCM SKIP] User {receiver_user.name} fcm_token kosong murni.")
 
     except Exception as e:
-        # 🟢 BERHASIL MENGUNCI EXCEPT UTAMA UTK BLOK TRY NOTIFIKASI
         print(f"🚨 [NOTIF GLOBAL ERROR] Alur notifikasi gagal total: {str(e)}")
         
     return new_message
 
 
-# 💬 4. Tarik Riwayat Pesan di Dalam Room (Buka Room Chat di Flutter)
+# 💬 4. Tarik Riwayat Pesan di Dalam Room
 @router.get("/rooms/{chat_id}/messages", response_model=List[MessageResponse])
 def get_chat_history(
     chat_id: int,
     db: Session = Depends(get_db),
     current_user: UserModel = Depends(get_current_user)
 ):
-    # Pastikan yang narik data emang salah satu pemilik room chat-nya (Aspek Privasi)
     room = db.query(ChatRoomModel).filter(ChatRoomModel.id == chat_id).first()
     if not room:
         raise HTTPException(status_code=404, detail="Room chat tidak ditemukan!")
@@ -238,17 +228,15 @@ def get_chat_history(
     if room.user_one_id != current_user.id and room.user_two_id != current_user.id:
         raise HTTPException(status_code=403, detail="Kamu tidak punya hak akses melihat chat ini, Beh!")
 
-    # 🟢 SUNTIKKAN DI SINI, BEH! (Sebelum narik daftar messages ke UI Flutter)
     db.query(MessageModel).filter(
         and_(
             MessageModel.chat_id == chat_id,
-            MessageModel.sender_id != current_user.id, # Pesan dari lawan bicara
-            MessageModel.is_read == False              # Yang statusnya masih belum dibaca
+            MessageModel.sender_id != current_user.id,
+            MessageModel.is_read == False
         )
     ).update({MessageModel.is_read: True}, synchronize_session=False)
     db.commit()
 
-    # Ambil riwayat pesan, urutkan dari yang paling lama agar merayap logis ke bawah layar HP
     messages = db.query(MessageModel).filter(MessageModel.chat_id == chat_id).order_by(MessageModel.created_at.asc()).all()
     
     return messages
