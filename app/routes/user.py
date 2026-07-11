@@ -16,12 +16,20 @@ from app.models.activity_log import ActivityLog
 from app.schemas.user import UserUpdateProfile, UserProfileResponse
 from app.middleware.auth_bearer import get_current_user 
 from passlib.context import CryptContext 
+import supabase as supabase_  # 🟢 Import resmi Supabase SDK
 
 # Setup password hashing context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # 🟢 PREFIX TETAP "/user" SESUAI ASLI LU, BEH!
 router = APIRouter(prefix="/user", tags=["Users"])
+
+# 🟢 Inisialisasi Client Resmi via Environment Variable Vercel
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+# Pake Service Role Key biar backend lu punya hak mutlak bypass RLS saat upload
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY") 
+
+supabase: supabase_.Client = supabase_.create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # 🟢 SOLUSI KUNCI MEMORI: Bungkus dalam class static agar state aman, konsisten, & gak hilang antar-request
 class OtpMemory:
@@ -99,52 +107,25 @@ async def upload_avatar(
     current_user: UserModel = Depends(get_current_user)
 ):
     try:
-        # 1. Validasi Ekstensi
         extension = file.filename.split(".")[-1].lower()
         if extension not in ["jpg", "jpeg", "png"]:
-            raise HTTPException(status_code=400, detail="Format file wajib JPG or PNG, Beh!")
+            raise HTTPException(status_code=400, detail="Format file wajib JPG atau PNG, Beh!")
 
         content = await file.read()
         
-        # 2. Bongkar PROJECT ID secara otomatis dari DATABASE_URL lu!
-        # Format database_url: postgresql://postgres:[pass]@db.tiylfogifxcrrylgiqyr.supabase.co:5432/postgres
-        db_url = os.environ.get("DATABASE_URL", "")
-        if "supabase.co" in db_url:
-            # Mengambil substring 'tiylfogifxcrrylgiqyr' dari URL database lu
-            project_id = db_url.split("@db.")[1].split(".supabase.co")[0]
-        else:
-            raise HTTPException(status_code=500, detail="DATABASE_URL tidak valid atau bukan Supabase, Beh!")
-
-        # 3. Racik nama file unik
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"user_{current_user.id}_{timestamp}.{extension}"
         storage_path = f"profiles/{filename}"
 
-        # 4. Tembak Supabase Storage REST API menggunakan HTTPX (Bypass library Supabase!)
-        # Kita pakai token/password dari database_url atau anon key jika lu punya.
-        # Karena bucket 'avatars' lu udah di-set PUBLIC policy-nya, kita bisa langsung post ke endpoint object.
-        supabase_rest_url = f"https://{project_id}.supabase.co/storage/v1/object/avatars/{storage_path}"
-        
-        # Ambil password database sebagai Authorization (jika RLS memperbolehkan)
-        # Atau jika lu punya SUPABASE_KEY di .env, ganti bearer-nya dengan key tersebut.
-        headers = {
-            "Content-Type": file.content_type,
-            # Jika policy bucket lu 'Public' bebas tanpa auth untuk insert, lu gak butuh header Authorization.
-            # Tapi jika butuh, pastikan RLS lu mengizinkan anonymous insert.
-        }
+        # 🚀 Panggil variabel 'supabase' yang sudah bersih tanpa tabrakan nama
+        supabase.storage.from_("avatars").upload(
+            path=storage_path,
+            file=content,
+            file_options={"content-type": file.content_type}
+        )
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(supabase_rest_url, content=content, headers=headers)
-            
-            # Jika gagal karena masalah RLS/Token, kita fallback ke informasi eror yang jelas
-            if response.status_code != 200:
-                print(f"🚨 [STORAGE REST ERROR] Status: {response.status_code}, Body: {response.text}")
-                # Catatan: Jika di sini eror 403/401, pastikan policy INSERT di Supabase di-set ke PUBLIC/ANON
+        public_avatar_url = supabase.storage.from_("avatars").get_public_url(storage_path)
 
-        # 5. Bangun URL Publik murni yang seragam untuk Flutter lu
-        public_avatar_url = f"https://{project_id}.supabase.co/storage/v1/object/public/avatars/{storage_path}"
-
-        # 6. Simpan langsung ke database via SQLAlchemy lu yang stabil
         current_user.avatar = public_avatar_url
         db.commit()
         db.refresh(current_user)
@@ -154,7 +135,8 @@ async def upload_avatar(
     except Exception as e:
         db.rollback()
         print(f"🚨 [AVATAR UPLOAD ERROR]: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Gagal upload avatar via Jalur URL: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Gagal upload avatar ke Cloud: {str(e)}")
+    
 # ========================================================
 # 🔒 3A. FASE 1: REQUEST GANTI PASSWORD & KIRIM OTP
 # ========================================================
