@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
-from datetime import datetime
+import datetime
 from app.config.database import Base
 
 class NotificationModel(Base):
