@@ -7,7 +7,7 @@ import random
 from app.config.database import get_db 
 from app.models.user import User 
 from app.models.otp import OTPVerification  # 🟢 Kelas model asli database lu
-from app.utils import get_password_hash, send_otp_email # 🟢 Fungsi email ijo lu
+from app.utils import get_jakarta_time, get_password_hash, send_otp_email # 🟢 Fungsi email ijo lu
 
 router = APIRouter(prefix="/api/auth/forgot-password", tags=["Forgot Password"])
 

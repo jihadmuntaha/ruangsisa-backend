@@ -14,6 +14,7 @@ from app.models.otp import OTPVerification
 from app.schemas.user import UserRegister, UserResponse, UserLogin, TokenResponse
 from app.schemas.otp import OTPVerify, OTPResend   
 from app.utils import (
+    get_jakarta_time,
     get_password_hash, 
     verify_password, 
     create_access_token, # ◄ Fungsi sakti pencetak token seragam proyek lu
@@ -154,7 +155,7 @@ def google_auth(payload: dict, request: Request, db: Session = Depends(get_db)):
     if not user:
         user = User(
             name=name, email=email, avatar=avatar, google_id=google_id,
-            eco_points=0, is_verified=True, verified_at=datetime.datetime.now(datetime.timezone.utc)()
+            eco_points=0, is_verified=True, verified_at=get_jakarta_time()
         )
         db.add(user)
         db.commit()
@@ -196,7 +197,7 @@ def verify_otp(payload: OTPVerify, request: Request, db: Session = Depends(get_d
         OTPVerification.otp_code == payload.otp_code,
         OTPVerification.purpose == payload.purpose,
         OTPVerification.is_used == False,
-        OTPVerification.expired_at > datetime.datetime.now(datetime.timezone.utc)()
+        OTPVerification.expired_at > get_jakarta_time()
     ).order_by(OTPVerification.id.desc()).first()
 
     if not db_otp:
@@ -212,7 +213,7 @@ def verify_otp(payload: OTPVerify, request: Request, db: Session = Depends(get_d
         raise HTTPException(status_code=404, detail="Data user kontributor tidak ditemukan!")
     
     user.is_verified = True
-    user.verified_at = datetime.datetime.now(datetime.timezone.utc)()
+    user.verified_at = get_jakarta_time()
     db.commit()
 
     log_activity(
