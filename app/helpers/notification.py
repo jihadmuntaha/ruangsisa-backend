@@ -19,6 +19,11 @@ if not firebase_admin._apps:
             print("🛡️ [FCM] Menginisialisasi Firebase via Environment Variable Cloud...")
             import json
             cred_dict = json.loads(firebase_env)
+            
+            # 🟢 FIX SAKTI: Bersihkan karakter garing (\n) bawaan private_key yang dirusak oleh parser Env Var Vercel
+            if "private_key" in cred_dict:
+                cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
+                
             cred = credentials.Certificate(cred_dict)
             firebase_admin.initialize_app(cred)
             print("🛡️ [FCM SUCCESS] Firebase Admin SDK sukses terkoneksi di Cloud Vercel!")
