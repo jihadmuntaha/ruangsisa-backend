@@ -107,9 +107,16 @@ async def upload_avatar(
     current_user: UserModel = Depends(get_current_user)
 ):
     try:
-        extension = file.filename.split(".")[-1].lower()
-        if extension not in ["jpg", "jpeg", "png"]:
-            raise HTTPException(status_code=400, detail="Format file wajib JPG atau PNG, Beh!")
+        # 🟢 GANTI KODE PEMOTONGAN LAMA DENGAN VALIDASI CONTENT_TYPE INI:
+        # Menghindari eror 'list index out of range' akibat nama file kosong dari Flutter
+        if file.content_type not in ["image/jpeg", "image/jpg", "image/png"]:
+            raise HTTPException(
+                status_code=400, 
+                detail="Format file wajib JPG atau PNG, Beh!"
+            )
+        
+        # Cari ekstensi cadangan dari content_type
+        extension = "png" if "png" in file.content_type else "jpg"
 
         content = await file.read()
         
@@ -117,7 +124,7 @@ async def upload_avatar(
         filename = f"user_{current_user.id}_{timestamp}.{extension}"
         storage_path = f"profiles/{filename}"
 
-        # 🚀 Panggil variabel 'supabase' yang sudah bersih tanpa tabrakan nama
+        # Jalur kirim resmi via SDK Supabase
         supabase.storage.from_("avatars").upload(
             path=storage_path,
             file=content,
@@ -132,6 +139,8 @@ async def upload_avatar(
 
         return {"status": "success", "avatar": public_avatar_url}
 
+    except HTTPException as http_err:
+        raise http_err
     except Exception as e:
         db.rollback()
         print(f"🚨 [AVATAR UPLOAD ERROR]: {str(e)}")
